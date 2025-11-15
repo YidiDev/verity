@@ -1,7 +1,7 @@
 {
   "name": "verity-dl",
-  "version": "0.3.2",
-  "description": "A data-first UI toolkit that keeps the server as the single source of truth",
+  "version": "0.3.3",
+  "description": "A framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth",
   "main": "verity/shared/static/lib/core.js",
   "module": "verity/shared/static/lib/core.js",
   "files": [
@@ -23,7 +23,8 @@
     "type": "git",
     "url": "https://github.com/YidiDev/verity.git"
   },
-  "homepage": "https://github.com/YidiDev/verity#readme",
+  "homepage": "https://verity.yidi.sh",
+  "funding": "https://github.com/sponsors/YidiDev",
   "bugs": {
     "url": "https://github.com/YidiDev/verity/issues"
   }
