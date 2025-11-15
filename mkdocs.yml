@@ -4,7 +4,7 @@ site_url: https://verity.yidi.sh
 repo_url: https://github.com/YidiDev/verity
 repo_name: YidiDev/verity
 
-copywrite: Copywrite &copy; 2025 Yidi Sprei
+copyrite: Copyrite &copy; 2025 Yidi Sprei
 
 nav:
   - Home: index.md
