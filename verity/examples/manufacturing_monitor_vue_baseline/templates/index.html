@@ -1,0 +1,2162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manufacturing Quality &amp; Downtime Monitor</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+      [v-cloak] {
+        display: none !important;
+      }
+    </style>
+    <script>
+      window.monitorUsers = {{ user_directory|tojson }};
+    </script>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen font-sans">
+    <div class="min-h-screen flex flex-col">
+      <header class="bg-slate-900/70 border-b border-slate-800/80 backdrop-blur">
+        <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <p class="text-sm uppercase tracking-[0.35em] text-slate-400">Riverbend Manufacturing</p>
+          <h1 class="mt-2 text-3xl sm:text-4xl font-semibold text-white">Quality &amp; Downtime Control Room</h1>
+          <p class="mt-3 max-w-3xl text-slate-300 text-base">
+            Shift supervisors get a single view of line performance, stoppages, and quality work. Operators log issues from the
+            floor and this SPA fans out updates to every surface—from the mezzanine wallboard to the line tablets.
+          </p>
+        </div>
+      </header>
+
+      <main class="flex-1 py-10">
+        <div
+          id="app"
+          v-cloak
+          class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8"
+        >
+          <error-banner></error-banner>
+
+          <toast-banner></toast-banner>
+
+          <section
+            class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 shadow-2xl shadow-slate-950/50"
+          >
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div class="space-y-2">
+                <div class="text-sm text-slate-300">
+                  <span class="font-semibold text-white" v-text="activeViewerName()"></span>
+                  <span class="text-slate-500">·</span>
+                  <span v-text="activeViewerRole()"></span>
+                </div>
+                <p class="text-xs text-slate-400" v-text="activeViewerDescription()"></p>
+                <div class="flex flex-wrap gap-2" v-show="viewerScopes().length > 0">
+                  <template v-for="scope in viewerScopes()" :key="'scope-badge-' + scope">
+                    <span
+                      class="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200"
+                      v-text="scopeLabel(scope)"
+                    ></span>
+                  </template>
+                </div>
+                <p class="text-[11px] uppercase tracking-wide text-slate-500" v-text="viewerLineAccessLabel()"></p>
+              </div>
+              <div class="w-full max-w-xs">
+                <label class="block text-xs font-medium text-slate-400">Control room persona</label>
+                <select
+                  v-model="selectedUserId"
+                  @change="changeUser(selectedUserId)"
+                  class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                >
+                  <template v-for="user in userDirectory" :key="'user-option-' + user.id">
+                    <option :value="user.id" v-text="user.name + ' — ' + user.role"></option>
+                  </template>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <nav class="flex flex-wrap items-center gap-2" aria-label="Control room sections">
+            <template v-for="page in pages" :key="page.id">
+              <button
+                type="button"
+                class="rounded-full border px-4 py-2 text-sm font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/80"
+                :class="pageButtonClasses(page)"
+                :disabled="!canAccessPage(page.id)"
+                @click="setPage(page.id)"
+                v-text="page.label"
+              ></button>
+            </template>
+          </nav>
+          <template v-if="isPage('overview')">
+            <div>
+              <template v-if="canAccessPage('overview')">
+                <div class="space-y-8">
+              <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-6">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 class="text-xl font-semibold text-white">Production lines</h2>
+                    <p class="mt-1 text-sm text-slate-400">
+                      Track OEE, shift goals, and crew leads. Select a line to see drill-downs and log stoppages.
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-slate-400">
+                    <span>Global feed:</span>
+                    <span :class="globalConnected ? 'text-emerald-300' : 'text-amber-300'" v-text="globalConnected ? 'connected' : 'reconnecting'"></span>
+                    <span class="hidden sm:inline">|</span>
+                    <span class="sm:hidden">·</span>
+                    <span>Line feed:</span>
+                    <span :class="lineConnected ? 'text-emerald-300' : 'text-amber-300'" v-text="lineConnected ? 'connected' : 'reconnecting'"></span>
+                  </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                  <template v-for="line in lines" :key="line.id">
+                    <button
+                      type="button"
+                      @click="selectLine(line.id)"
+                      class="group relative rounded-2xl border border-slate-800 bg-slate-900/50 text-left p-5 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                      :class="selectedLineId === line.id ? 'ring-2 ring-emerald-400/70 ring-offset-2 ring-offset-slate-900 shadow-lg shadow-emerald-500/20' : 'hover:border-slate-700 hover:bg-slate-900/70'"
+                    >
+                      <div class="flex items-start justify-between gap-4">
+                        <div>
+                          <p class="text-sm uppercase tracking-wide text-slate-400" v-text="line.id"></p>
+                          <h3 class="mt-1 text-lg font-semibold text-white" v-text="line.name"></h3>
+                        </div>
+                        <span
+                          class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold"
+                          :class="statusBadgeClasses(line.status)"
+                          v-text="line.status"
+                        ></span>
+                      </div>
+                      <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <dt class="text-slate-400">Active SKU</dt>
+                          <dd class="text-white" v-text="line.active_sku"></dd>
+                        </div>
+                        <div class="text-right">
+                          <dt class="text-slate-400">OEE</dt>
+                          <dd class="text-white" v-text="formatPercent(line.oee)"></dd>
+                        </div>
+                        <div>
+                          <dt class="text-slate-400">Crew lead</dt>
+                          <dd class="text-white" v-text="line.crew_lead"></dd>
+                        </div>
+                        <div class="text-right">
+                          <dt class="text-slate-400">Shift goal</dt>
+                          <dd class="text-white" v-text="line.line_goal_units + ' units'"></dd>
+                        </div>
+                      </dl>
+                      <p class="mt-3 text-xs text-slate-400" v-text="line.status_detail || 'Running to plan'"></p>
+                    </button>
+                  </template>
+                </div>
+              </section>
+
+              <section class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+                <div class="space-y-6">
+                  <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                    <div class="flex items-center justify-between gap-4">
+                      <h2 class="text-xl font-semibold text-white">Line detail</h2>
+                      <template v-if="selectedLine">
+                        <span class="text-xs text-slate-400" v-text="'Last update · ' + formatTime(selectedLine.last_updated)"></span>
+                      </template>
+                    </div>
+
+                    <template v-if="!selectedLine">
+                      <p class="mt-6 text-sm text-slate-400">Select a line to view its drill-down.</p>
+                    </template>
+
+                    <template v-if="selectedLine">
+                      <div class="mt-6 space-y-6">
+                        <div class="grid gap-4 md:grid-cols-2">
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Crew lead</p>
+                            <p class="mt-1 text-lg font-semibold text-white" v-text="line.crew_lead"></p>
+                            <p class="mt-1 text-xs text-slate-400">Goal · <span v-text="line.line_goal_units + ' units'"></span></p>
+                          </div>
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                            <p class="text-xs uppercase tracking-wide text-slate-500">Overall equipment effectiveness</p>
+                            <p class="mt-1 text-2xl font-semibold text-white" v-text="formatPercent(line.oee)"></p>
+                            <p class="mt-1 text-xs text-slate-400">Latest telemetry from the line PLCs</p>
+                          </div>
+                        </div>
+                        <template v-if="line.active_alert">
+                          <div class="rounded-2xl border border-amber-500/60 bg-amber-500/10 p-4">
+                            <div class="flex items-start gap-3">
+                              <svg class="h-5 w-5 text-amber-300" viewBox="0 0 20 20" fill="currentColor">
+                                <path
+                                  fill-rule="evenodd"
+                                  d="M8.257 3.099c.765-1.36 2.721-1.36 3.486 0l6.518 11.59c.75 1.335-.213 3.01-1.743 3.01H3.482c-1.53 0-2.492-1.675-1.743-3.01l6.518-11.59zM11 13a1 1 0 10-2 0 1 1 0 002 0zm-.25-5.75a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5z"
+                                  clip-rule="evenodd"
+                                />
+                              </svg>
+                              <div>
+                                <h3 class="text-sm font-semibold text-white">Active downtime alert</h3>
+                                <p class="mt-1 text-sm text-amber-100" v-text="line.active_alert.reason"></p>
+                                <p class="mt-2 text-xs text-amber-200/80">
+                                  Reported by <span class="font-medium" v-text="line.active_alert.reported_by"></span> · ETA
+                                  <span v-text="formatTime(line.active_alert.expected_resolution)"></span>
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 space-y-4">
+                          <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <h3 class="text-sm font-semibold text-white">Line plan controls</h3>
+                              <p class="text-xs text-slate-500">Ops supervisors tune crew assignments, shift goals, and status copy.</p>
+                            </div>
+                            <div class="flex gap-2">
+                              <button
+                                type="button"
+                                v-show="!linePlanEditing"
+                                @click="startLinePlanEdit()"
+                                class="inline-flex items-center rounded-lg border border-emerald-400/40 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/10"
+                              >
+                                Edit plan
+                              </button>
+                              <button
+                                type="button"
+                                v-show="linePlanEditing"
+                                @click="cancelLinePlanEdit()"
+                                class="inline-flex items-center rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:bg-slate-800/80"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                          <template v-if="linePlanEditing">
+                            <div class="space-y-3 text-sm">
+                              <div class="grid gap-3 md:grid-cols-2">
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Status</label>
+                                  <select
+                                    v-model="linePlanForm.status"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  >
+                                    <option>Running</option>
+                                    <option>Changeover</option>
+                                    <option>Stopped</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Crew lead</label>
+                                  <input
+                                    type="text"
+                                    v-model="linePlanForm.crew_lead"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  />
+                                </div>
+                              </div>
+                              <div class="grid gap-3 md:grid-cols-3">
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Shift goal (units)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    v-model.number="linePlanForm.line_goal_units"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">OEE (%)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.1"
+                                    v-model.number="linePlanForm.oee"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  />
+                                </div>
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Active SKU</label>
+                                  <input
+                                    type="text"
+                                    v-model="linePlanForm.active_sku"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  />
+                                </div>
+                              </div>
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Status detail</label>
+                                <textarea
+                                  rows="2"
+                                  v-model="linePlanForm.status_detail"
+                                  class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                  placeholder="E.g. Running with QA audit shadowing station 4"
+                                ></textarea>
+                              </div>
+                              <button
+                                type="button"
+                                @click="saveLinePlan()"
+                                :disabled="linePlanSaving"
+                                class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                              >
+                                <svg v-show="linePlanSaving" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                                </svg>
+                                <span>Save updates</span>
+                              </button>
+                            </div>
+                          </template>
+                          <template v-if="!linePlanEditing">
+                            <p class="text-xs text-slate-500">
+                              <span class="font-medium text-slate-200" v-text="line.status"></span>
+                              · Goal
+                              <span class="font-medium text-slate-200" v-text="formatNumber(line.line_goal_units)"></span>
+                              units · Crew lead
+                              <span class="font-medium text-slate-200" v-text="line.crew_lead"></span>
+                            </p>
+                          </template>
+                        </div>
+                        <div>
+                          <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400">SKU drill-down</h3>
+                          <p class="text-xs text-slate-500">Pulled from today's run plan so supervisors can balance demand.</p>
+                          <div class="mt-4 overflow-hidden rounded-2xl border border-slate-800">
+                            <table class="min-w-full divide-y divide-slate-800 text-sm">
+                              <thead class="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
+                                <tr>
+                                  <th class="px-4 py-3 text-left">SKU</th>
+                                  <th class="px-4 py-3 text-left">Description</th>
+                                  <th class="px-4 py-3 text-right">Shift output</th>
+                                  <th class="px-4 py-3 text-right">Yield</th>
+                                  <th class="px-4 py-3 text-right">Queued orders</th>
+                                </tr>
+                              </thead>
+                              <tbody class="divide-y divide-slate-800">
+                                <template v-for="sku in line.skus" :key="sku.sku">
+                                  <tr class="bg-slate-950/50">
+                                    <td class="px-4 py-3 font-mono text-sm text-slate-200" v-text="sku.sku"></td>
+                                    <td class="px-4 py-3 text-slate-300" v-text="sku.description"></td>
+                                    <td class="px-4 py-3 text-right text-slate-200" v-text="formatNumber(sku.shift_output)"></td>
+                                    <td class="px-4 py-3 text-right text-slate-200" v-text="formatPercent(sku.quality_yield)"></td>
+                                    <td class="px-4 py-3 text-right text-slate-200" v-text="formatNumber(sku.queued_orders)"></td>
+                                  </tr>
+                                </template>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 space-y-4">
+                          <div>
+                            <h3 class="text-sm font-semibold text-white">Adjust SKU targets</h3>
+                            <p class="text-xs text-slate-500">Cycle count updates adjust throughput goals without leaving the control room.</p>
+                          </div>
+                          <template v-if="line.skus && line.skus.length">
+                            <div class="space-y-3 text-sm">
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">SKU</label>
+                                <select
+                                  v-model="skuEditForm.sku"
+                                  @change="loadSkuDefaults()"
+                                  class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                >
+                                  <template v-for="sku in line.skus" :key="'sku-option-' + sku.sku">
+                                    <option :value="sku.sku" v-text="sku.sku + ' — ' + sku.description"></option>
+                                  </template>
+                                </select>
+                              </div>
+                              <div class="grid gap-3 md:grid-cols-3">
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Shift output</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    v-model.number="skuEditForm.shift_output"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Yield (%)</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="100"
+                                    step="0.1"
+                                    v-model.number="skuEditForm.quality_yield"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Queued orders</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    v-model.number="skuEditForm.queued_orders"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                  />
+                                </div>
+                              </div>
+                              <div class="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  @click="saveSkuAdjustment()"
+                                  :disabled="skuSaving"
+                                  class="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-transparent px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <svg v-show="skuSaving" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                                  </svg>
+                                  <span>Apply adjustments</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  @click="resetSkuEditor()"
+                                  class="inline-flex items-center rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-slate-800/80"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                          </template>
+                          <template v-if="!line.skus || line.skus.length === 0">
+                            <p class="text-xs text-slate-500">No SKU plan loaded for this line yet.</p>
+                          </template>
+                        </div>
+                        <div class="grid gap-4 lg:grid-cols-2">
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                            <div>
+                              <h3 class="text-sm font-semibold text-white">Log downtime</h3>
+                              <p class="text-xs text-slate-500">Alerts maintenance, quality, and the affected crew in real time.</p>
+                            </div>
+                            <label class="block text-xs font-medium text-slate-400">Reason</label>
+                            <input
+                              type="text"
+                              v-model="stoppageForm.reason"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                              placeholder="E.g. Quality hold, missing components"
+                            />
+                            <div class="grid grid-cols-2 gap-3">
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Expected minutes</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  v-model.number="stoppageForm.expected_duration_minutes"
+                                  class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                />
+                              </div>
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Reporter</label>
+                                <input
+                                  type="text"
+                                  v-model="stoppageForm.reported_by"
+                                  class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                />
+                              </div>
+                            </div>
+                            <div class="flex flex-wrap gap-3">
+                              <button
+                                type="button"
+                                @click="logStoppage()"
+                                :disabled="actionLoading"
+                                class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                              >
+                                <svg v-show="actionLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                                </svg>
+                                <span>Log stoppage</span>
+                              </button>
+                              <button
+                                type="button"
+                                @click="resolveLine()"
+                                :disabled="actionLoading"
+                                class="inline-flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-transparent px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                Resume line
+                              </button>
+                            </div>
+                          </div>
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                            <div>
+                              <h3 class="text-sm font-semibold text-white">Record quality issue</h3>
+                              <p class="text-xs text-slate-500">Escalates the finding to quality while keeping the defect log current.</p>
+                            </div>
+                            <div>
+                              <label class="block text-xs font-medium text-slate-400">Severity</label>
+                              <select
+                                v-model="defectForm.severity"
+                                class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                              >
+                                <option value="minor">Minor</option>
+                                <option value="major">Major</option>
+                                <option value="critical">Critical</option>
+                              </select>
+                            </div>
+                            <label class="block text-xs font-medium text-slate-400">Description</label>
+                            <textarea
+                              rows="3"
+                              v-model="defectForm.description"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                              placeholder="E.g. Dimensional out-of-tolerance on pump body"
+                            ></textarea>
+                            <button
+                              type="button"
+                              @click="recordQualityIssue()"
+                              :disabled="actionLoading"
+                              class="inline-flex items-center gap-2 rounded-xl border border-sky-400/60 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              Log defect
+                            </button>
+                          </div>
+                          <div class="mt-5 rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                            <div>
+                              <h4 class="text-sm font-semibold text-white">Adjust coverage</h4>
+                              <p class="text-xs text-slate-500">Cycle counts update on-hand and usage assumptions for planners.</p>
+                            </div>
+                            <template v-if="inventoryPositions.length === 0">
+                              <p class="text-xs text-slate-500">Log deliveries to start tracking coverage.</p>
+                            </template>
+                            <template v-if="inventoryPositions.length > 0">
+                              <div class="space-y-3 text-sm">
+                                <div>
+                                  <label class="block text-xs font-medium text-slate-400">Material</label>
+                                  <select
+                                    v-model="inventoryAdjustForm.inventory_id"
+                                    @change="loadInventoryAdjustDefaults()"
+                                    class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                  >
+                                    <template v-for="item in inventoryPositions" :key="'inventory-option-' + item.id">
+                                      <option :value="item.id" v-text="item.material"></option>
+                                    </template>
+                                  </select>
+                                </div>
+                                <div class="grid gap-3 md:grid-cols-3">
+                                  <div>
+                                    <label class="block text-xs font-medium text-slate-400">On hand</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      v-model.number="inventoryAdjustForm.on_hand"
+                                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label class="block text-xs font-medium text-slate-400">Daily usage</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      v-model.number="inventoryAdjustForm.daily_usage"
+                                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                    />
+                                  </div>
+                                  <div>
+                                    <label class="block text-xs font-medium text-slate-400">Target days</label>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      v-model.number="inventoryAdjustForm.target_days"
+                                      class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                                    />
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  @click="adjustInventory()"
+                                  :disabled="inventoryAdjusting"
+                                  class="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-transparent px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  <svg v-show="inventoryAdjusting" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                                  </svg>
+                                  <span>Apply inventory update</span>
+                                </button>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+
+                  <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-5">
+                    <header>
+                      <h2 class="text-xl font-semibold text-white">Live operations feed</h2>
+                      <p class="mt-1 text-sm text-slate-400">
+                        Global feed mirrors every update across the plant. Subscribe to a specific line to watch only the alerts that
+                        matter to that crew.
+                      </p>
+                    </header>
+                    <div class="space-y-4">
+                      <div>
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span>Global</span>
+                          <span :class="globalConnected ? 'text-emerald-300' : 'text-amber-300'" v-text="globalConnected ? 'connected' : 'reconnecting'"></span>
+                        </div>
+                        <ol class="mt-2 space-y-2 text-xs">
+                          <template v-if="globalUpdates.length === 0">
+                            <p class="text-slate-500">No updates yet.</p>
+                          </template>
+                          <template v-for="update in globalUpdates" :key="update.id">
+                            <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                              <p class="font-medium text-slate-200" v-text="update.message"></p>
+                              <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                            </li>
+                          </template>
+                        </ol>
+                      </div>
+                      <div>
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span>Line feed</span>
+                          <span :class="lineConnected ? 'text-emerald-300' : 'text-amber-300'" v-text="lineConnected ? 'connected' : 'reconnecting'"></span>
+                        </div>
+                        <ol class="mt-2 space-y-2 text-xs">
+                          <template v-if="lineUpdates.length === 0">
+                            <p class="text-slate-500">Select a line to follow its alerts.</p>
+                          </template>
+                          <template v-for="update in lineUpdates" :key="update.id + update.scope">
+                            <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                              <p class="font-medium text-slate-200" v-text="update.message"></p>
+                              <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                            </li>
+                          </template>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <aside class="space-y-6">
+                  <template v-if="canViewScope('quality')">
+                    <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                    <div class="flex items-center justify-between gap-4">
+                      <h2 class="text-xl font-semibold text-white">Recent defects</h2>
+                      <span class="text-xs text-slate-400" v-text="paginatedTotal('recent_defects') + ' open'"></span>
+                    </div>
+                    <p class="mt-1 text-sm text-slate-400">Quality techs see new issues the moment an operator records them.</p>
+                    <div class="mt-4 space-y-4">
+                      <template v-if="recentDefects.length === 0">
+                        <p class="text-sm text-slate-500">No defects reported.</p>
+                      </template>
+                      <template v-for="defect in recentDefects" :key="defect.id">
+                        <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                          <div class="flex items-center justify-between">
+                            <p class="font-semibold text-white" v-text="defect.sku"></p>
+                            <span class="text-xs font-medium uppercase tracking-wide" :class="severityBadgeClasses(defect.severity)" v-text="defect.severity"></span>
+                          </div>
+                          <p class="mt-2 text-sm text-slate-300" v-text="defect.description"></p>
+                          <p class="mt-3 text-xs text-slate-500">
+                            Line <span class="font-medium text-slate-300" v-text="defect.line_id"></span> ·
+                            <span v-text="formatTime(defect.detected_at)"></span>
+                          </p>
+                          <p class="mt-1 text-xs text-slate-500" v-text="defect.containment"></p>
+                        </article>
+                      </template>
+                    </div>
+                    <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                      <span v-text="paginationWindowLabel('recent_defects')"></span>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasPrev('recent_defects')"
+                          @click="changePage('recent_defects', -1)"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasNext('recent_defects')"
+                          @click="changePage('recent_defects', 1)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                    </div>
+                  </template>
+
+                  <template v-if="canViewScope('maintenance')">
+                    <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                    <div class="flex items-center justify-between gap-4">
+                      <h2 class="text-xl font-semibold text-white">Downtime timeline</h2>
+                      <span class="text-xs text-slate-400" v-text="paginatedTotal('downtime_events') + ' events'"></span>
+                    </div>
+                    <p class="mt-1 text-sm text-slate-400">Chronological feed of stoppages across the plant floor.</p>
+                    <ol class="mt-4 space-y-3 text-sm">
+                      <template v-if="downtimeEvents.length === 0">
+                        <p class="text-sm text-slate-500">No downtime logged.</p>
+                      </template>
+                      <template v-for="event in downtimeEvents" :key="event.id">
+                        <li class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                          <div class="flex items-center justify-between">
+                            <p class="font-semibold text-white" v-text="event.line_id"></p>
+                            <span class="text-xs text-slate-400" v-text="formatTime(event.started_at)"></span>
+                          </div>
+                          <p class="mt-2 text-sm text-slate-300" v-text="event.reason"></p>
+                          <p class="mt-2 text-xs text-slate-500">
+                            <span class="text-slate-400">Reporter</span>
+                            <span class="ml-1 text-slate-300" v-text="event.reported_by"></span>
+                          </p>
+                          <p class="mt-1 text-xs text-slate-500">
+                            <span class="text-slate-400">ETA</span>
+                            <span class="ml-1 text-slate-300" v-text="formatTime(event.expected_resolution)"></span>
+                          </p>
+                          <template v-if="event.assigned_to">
+                            <p class="mt-1 text-xs text-emerald-300">Dispatched to <span v-text="event.assigned_to"></span></p>
+                          </template>
+                        </li>
+                      </template>
+                    </ol>
+                    <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                      <span v-text="paginationWindowLabel('downtime_events')"></span>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasPrev('downtime_events')"
+                          @click="changePage('downtime_events', -1)"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasNext('downtime_events')"
+                          @click="changePage('downtime_events', 1)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                    </div>
+                  </template>
+                </aside>
+              </section>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('overview')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">
+                    This viewer does not include the control room overview. Switch personas to see production performance, downtime, and quality summaries.
+                  </p>
+                </section>
+              </template>
+            </div>
+          </template>
+          <template v-if="isPage('quality')">
+            <div>
+              <template v-if="canAccessPage('quality')">
+                <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <section class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Quality summary</h2>
+                      <p class="mt-1 text-sm text-slate-400">QA leads monitor first pass yield and active containment actions.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="qualitySummary ? 'Updated ' + formatTime(qualitySummary.last_updated) : ''"></span>
+                  </div>
+                  <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <p class="text-xs uppercase tracking-wide text-slate-500">First pass yield</p>
+                      <p class="mt-2 text-2xl font-semibold text-white" v-text="qualitySummary ? formatPercent(qualitySummary.first_pass_yield) : '—'"></p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <p class="text-xs uppercase tracking-wide text-slate-500">Containment actions</p>
+                      <p class="mt-2 text-2xl font-semibold text-white" v-text="qualitySummary ? formatNumber(qualitySummary.containment_actions) : '—'"></p>
+                    </div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                      <p class="text-xs uppercase tracking-wide text-slate-500">Audits due</p>
+                      <p class="mt-2 text-2xl font-semibold text-white" v-text="qualitySummary ? formatNumber(qualitySummary.audits_due) : '—'"></p>
+                    </div>
+                  </div>
+                  <div class="mt-6">
+                    <h3 class="text-sm font-semibold uppercase tracking-wide text-slate-400">Top defects today</h3>
+                    <div class="mt-4 overflow-hidden rounded-2xl border border-slate-800">
+                      <table class="min-w-full divide-y divide-slate-800 text-sm">
+                        <thead class="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
+                          <tr>
+                            <th class="px-4 py-3 text-left">SKU</th>
+                            <th class="px-4 py-3 text-left">Issue</th>
+                            <th class="px-4 py-3 text-right">Count</th>
+                            <th class="px-4 py-3 text-left">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-800">
+                          <template v-if="!qualitySummary || qualitySummary.top_defects.length === 0">
+                            <tr>
+                              <td colspan="4" class="px-4 py-4 text-center text-slate-500">No active defects.</td>
+                            </tr>
+                          </template>
+                          <template v-for="item in qualitySummary?.top_defects || []" :key="item.sku + item.issue">
+                            <tr class="bg-slate-950/50">
+                              <td class="px-4 py-3 font-mono text-sm text-slate-200" v-text="item.sku"></td>
+                              <td class="px-4 py-3 text-slate-300" v-text="item.issue"></td>
+                              <td class="px-4 py-3 text-right text-slate-200" v-text="formatNumber(item.count)"></td>
+                              <td class="px-4 py-3 text-slate-300" v-text="item.status"></td>
+                            </tr>
+                          </template>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+                <div class="grid gap-6 lg:grid-cols-2">
+                  <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-4">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Log quality audit</h2>
+                      <p class="mt-1 text-sm text-slate-400">Document layered process audits and alert floor teams.</p>
+                    </div>
+                    <div class="grid gap-4">
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Line</label>
+                        <select
+                          v-model="auditForm.line_id"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                        >
+                          <option value="">Across lines</option>
+                          <template v-for="line in lines" :key="line.id + '-audit'">
+                            <option :value="line.id" v-text="line.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div class="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">SKU</label>
+                          <input
+                            type="text"
+                            v-model="auditForm.sku"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Performed by</label>
+                          <input
+                            type="text"
+                            v-model="auditForm.performed_by"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Status</label>
+                        <select
+                          v-model="auditForm.status"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                        >
+                          <option value="Open">Open</option>
+                          <option value="Monitoring">Monitoring</option>
+                          <option value="Closed">Closed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Summary</label>
+                        <textarea
+                          rows="3"
+                          v-model="auditForm.summary"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                          placeholder="E.g. Pulled 5 pcs for layered process audit"
+                        ></textarea>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      @click="recordQualityAudit()"
+                      :disabled="auditLoading"
+                      class="inline-flex items-center gap-2 rounded-xl border border-sky-400/60 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <svg v-show="auditLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                      </svg>
+                      <span>Record audit</span>
+                    </button>
+                  </div>
+
+                  <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                    <div class="flex items-center justify-between gap-4">
+                      <h2 class="text-xl font-semibold text-white">Audit trail</h2>
+                      <span class="text-xs text-slate-400" v-text="paginatedTotal('quality_audits') + ' logged'"></span>
+                    </div>
+                    <ol class="mt-4 space-y-4 text-sm">
+                      <template v-if="qualityAudits.length === 0">
+                        <p class="text-sm text-slate-500">No audits logged yet.</p>
+                      </template>
+                      <template v-for="audit in qualityAudits" :key="audit.id">
+                        <li class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                          <div class="flex items-center justify-between">
+                            <p class="font-semibold text-white" v-text="audit.sku"></p>
+                            <span class="text-xs text-slate-400" v-text="formatTime(audit.logged_at)"></span>
+                          </div>
+                          <p class="mt-1 text-xs uppercase tracking-wide text-slate-400" v-text="audit.performed_by"></p>
+                          <p class="mt-2 text-sm text-slate-300" v-text="audit.summary"></p>
+                          <p class="mt-2 text-xs text-slate-500">
+                            <span class="text-slate-400">Status</span>
+                            <span class="ml-1 text-sky-200" v-text="audit.status"></span>
+                            <template v-if="audit.line_id">
+                              <span>· Line <span class="font-medium" v-text="audit.line_id"></span></span>
+                            </template>
+                          </p>
+                        </li>
+                      </template>
+                    </ol>
+                    <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                      <span v-text="paginationWindowLabel('quality_audits')"></span>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasPrev('quality_audits')"
+                          @click="changePage('quality_audits', -1)"
+                        >
+                          Prev
+                        </button>
+                        <button
+                          type="button"
+                          class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          :disabled="!hasNext('quality_audits')"
+                          @click="changePage('quality_audits', 1)"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Open defects</h2>
+                  <p class="mt-1 text-sm text-slate-400">Pulled live from the operator log.</p>
+                  <ul class="mt-4 space-y-3 text-sm">
+                    <template v-if="recentDefects.length === 0">
+                      <p class="text-sm text-slate-500">No defects reported.</p>
+                    </template>
+                    <template v-for="defect in recentDefects" :key="'quality-' + defect.id">
+                      <li class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between">
+                          <p class="font-semibold text-white" v-text="defect.sku"></p>
+                          <span class="text-xs font-medium uppercase tracking-wide" :class="severityBadgeClasses(defect.severity)" v-text="defect.severity"></span>
+                        </div>
+                        <p class="mt-2 text-sm text-slate-300" v-text="defect.description"></p>
+                        <p class="mt-1 text-xs text-slate-500" v-text="'Line ' + defect.line_id + ' · ' + formatTime(defect.detected_at)"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('recent_defects')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('recent_defects')"
+                        @click="changePage('recent_defects', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('recent_defects')"
+                        @click="changePage('recent_defects', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Global feed</h2>
+                  <ol class="mt-4 space-y-2 text-xs">
+                    <template v-if="globalUpdates.length === 0">
+                      <p class="text-slate-500">No updates yet.</p>
+                    </template>
+                    <template v-for="update in globalUpdates" :key="'quality-feed-' + update.id">
+                      <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <p class="font-medium text-slate-200" v-text="update.message"></p>
+                        <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+              </aside>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('quality')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">This viewer does not include the quality room. Switch personas to review defects, audits, and containment work.</p>
+                </section>
+              </template>
+            </div>
+          </template>
+          <template v-if="isPage('maintenance')">
+            <div>
+              <template v-if="canAccessPage('maintenance')">
+                <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <section class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Downtime dispatch board</h2>
+                      <p class="mt-1 text-sm text-slate-400">Maintenance leads assign technicians as stoppages come in.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('downtime_events') + ' open events'"></span>
+                  </div>
+                  <div class="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+                    <div class="space-y-4">
+                      <template v-if="downtimeEvents.length === 0">
+                        <p class="text-sm text-slate-500">No downtime logged.</p>
+                      </template>
+                      <template v-for="event in downtimeEvents" :key="'dispatch-' + event.id">
+                        <button
+                          type="button"
+                          @click="selectDowntime(event.id)"
+                          class="w-full text-left rounded-2xl border px-4 py-3 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/70"
+                          :class="selectedDowntimeId === event.id ? 'border-emerald-400/70 bg-emerald-500/10 text-emerald-100' : 'border-slate-800 bg-slate-950/60 text-slate-200 hover:border-slate-700 hover:bg-slate-900/70'"
+                        >
+                          <div class="flex items-center justify-between gap-4">
+                            <div>
+                              <p class="text-sm font-semibold" v-text="lineName(event.line_id)"></p>
+                              <p class="text-xs text-slate-400" v-text="formatTime(event.started_at)"></p>
+                            </div>
+                            <span class="text-xs font-semibold uppercase tracking-wide" v-text="event.status"></span>
+                          </div>
+                          <p class="mt-2 text-sm" v-text="event.reason"></p>
+                          <p class="mt-2 text-xs text-slate-400">
+                            Reporter <span class="text-slate-200" v-text="event.reported_by"></span>
+                          </p>
+                          <template v-if="event.assigned_to">
+                            <p class="mt-2 text-xs text-emerald-300">Assigned to <span v-text="event.assigned_to"></span></p>
+                          </template>
+                        </button>
+                      </template>
+                      <div class="flex items-center justify-between text-xs text-slate-500">
+                        <span v-text="paginationWindowLabel('downtime_events')"></span>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasPrev('downtime_events')"
+                            @click="changePage('downtime_events', -1)"
+                          >
+                            Prev
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasNext('downtime_events')"
+                            @click="changePage('downtime_events', 1)"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+                      <template v-if="!currentDowntimeEvent">
+                        <p class="text-sm text-slate-500">Choose a downtime event to dispatch.</p>
+                      </template>
+                      <template v-if="currentDowntimeEvent">
+                        <div class="space-y-4">
+                          <div>
+                            <h3 class="text-sm font-semibold text-white" v-text="lineName(currentDowntimeEvent.line_id)"></h3>
+                            <p class="mt-1 text-xs text-slate-400" v-text="currentDowntimeEvent.reason"></p>
+                          </div>
+                          <div class="grid gap-3 text-xs text-slate-400">
+                            <p>
+                              Started
+                              <span class="font-medium text-slate-200" v-text="formatTime(currentDowntimeEvent.started_at)"></span>
+                            </p>
+                            <p>
+                              ETA
+                              <span class="font-medium text-slate-200" v-text="formatTime(currentDowntimeEvent.expected_resolution)"></span>
+                            </p>
+                          </div>
+                          <div class="space-y-3">
+                            <label class="block text-xs font-medium text-slate-400">Technician</label>
+                            <input
+                              type="text"
+                              v-model="dispatchForm.technician"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            />
+                            <div class="grid grid-cols-2 gap-3">
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">ETA (minutes)</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  v-model.number="dispatchForm.eta_minutes"
+                                  class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                />
+                              </div>
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Notes</label>
+                                <input
+                                  type="text"
+                                  v-model="dispatchForm.note"
+                                  class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              @click="dispatchMaintenance()"
+                              :disabled="maintenanceLoading"
+                              class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                            >
+                              <svg v-show="maintenanceLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                              </svg>
+                              <span>Dispatch maintenance</span>
+                            </button>
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-xl font-semibold text-white">Preventive backlog</h2>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('maintenance_backlog') + ' tasks'"></span>
+                  </div>
+                  <div class="mt-4 space-y-4">
+                    <template v-if="maintenanceBacklog.length === 0">
+                      <p class="text-sm text-slate-500">No scheduled work.</p>
+                    </template>
+                    <template v-for="task in maintenanceBacklog" :key="task.id">
+                      <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between">
+                          <p class="font-semibold text-white" v-text="task.asset"></p>
+                          <span class="text-xs text-slate-400" v-text="task.priority + ' priority'"></span>
+                        </div>
+                        <p class="mt-2 text-sm text-slate-300" v-text="task.status"></p>
+                        <p class="mt-2 text-xs text-slate-500">
+                          Owner <span class="text-slate-200" v-text="task.owner"></span> · Due
+                          <span class="text-slate-200" v-text="formatTime(task.due)"></span>
+                        </p>
+                      </article>
+                    </template>
+                  </div>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('maintenance_backlog')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('maintenance_backlog')"
+                        @click="changePage('maintenance_backlog', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('maintenance_backlog')"
+                        @click="changePage('maintenance_backlog', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Line status</h2>
+                  <ul class="mt-4 space-y-3 text-sm">
+                    <template v-for="line in lines" :key="'maintenance-line-' + line.id">
+                      <li class="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-950/60 px-4 py-3">
+                        <div>
+                          <p class="font-semibold text-white" v-text="line.name"></p>
+                          <p class="text-xs text-slate-400" v-text="line.status_detail || 'Running to plan'"></p>
+                        </div>
+                        <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClasses(line.status)" v-text="line.status"></span>
+                      </li>
+                    </template>
+                  </ul>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Dispatch log</h2>
+                  <ol class="mt-4 space-y-2 text-xs">
+                    <template v-if="globalUpdates.length === 0">
+                      <p class="text-slate-500">No updates yet.</p>
+                    </template>
+                    <template v-for="update in globalUpdates" :key="'maintenance-feed-' + update.id">
+                      <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <p class="font-medium text-slate-200" v-text="update.message"></p>
+                        <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+              </aside>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('maintenance')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">This viewer does not include the maintenance dispatch room. Switch personas to coordinate downtime response.</p>
+                </section>
+              </template>
+            </div>
+          </template>
+          <template v-if="isPage('logistics')">
+            <div>
+              <template v-if="canAccessPage('logistics')">
+                <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <section class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Inbound material board</h2>
+                      <p class="mt-1 text-sm text-slate-400">Receiving logs every truck so line leads know when replenishment hits the dock.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('supply_runs') + ' tracked'"></span>
+                  </div>
+                  <div class="mt-4 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+                    <div class="space-y-4">
+                      <template v-if="supplyRuns.length === 0">
+                        <p class="text-sm text-slate-500">No deliveries staged.</p>
+                      </template>
+                      <template v-for="run in supplyRuns" :key="'supply-' + run.id">
+                        <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                          <div class="flex items-start justify-between gap-4">
+                            <div>
+                              <p class="text-sm font-semibold text-white" v-text="run.line_id ? lineName(run.line_id) : 'Shared receiving'"></p>
+                              <p class="text-xs text-slate-400" v-text="run.carrier + ' · ' + run.dock"></p>
+                            </div>
+                            <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold" :class="deliveryStatusClasses(run.status)" v-text="run.status"></span>
+                          </div>
+                          <p class="text-sm text-slate-300">
+                            <span class="font-medium" v-text="run.material"></span>
+                            ·
+                            <span v-text="formatNumber(run.quantity)"></span>
+                            <span v-text="run.uom"></span>
+                          </p>
+                          <p class="text-xs text-slate-500">
+                            ETA <span class="text-slate-300" v-text="formatTime(run.eta)"></span>
+                            · Logged <span class="text-slate-300" v-text="formatTime(run.logged_at)"></span>
+                          </p>
+                          <template v-if="run.notes">
+                            <p class="text-xs text-slate-500" v-text="run.notes"></p>
+                          </template>
+                        </article>
+                      </template>
+                      <div class="flex items-center justify-between text-xs text-slate-500">
+                        <span v-text="paginationWindowLabel('supply_runs')"></span>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasPrev('supply_runs')"
+                            @click="changePage('supply_runs', -1)"
+                          >
+                            Prev
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasNext('supply_runs')"
+                            @click="changePage('supply_runs', 1)"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 space-y-3">
+                      <div>
+                        <h3 class="text-sm font-semibold text-white">Log inbound delivery</h3>
+                        <p class="mt-1 text-xs text-slate-500">Posts to the wallboard and updates inventory coverage.</p>
+                      </div>
+                      <div class="space-y-3 text-sm">
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Line</label>
+                          <select
+                            v-model="deliveryForm.line_id"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                          >
+                            <option value="">General receiving</option>
+                            <template v-for="line in lines" :key="'delivery-line-' + line.id">
+                              <option :value="line.id" v-text="line.name"></option>
+                            </template>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Material</label>
+                          <input
+                            type="text"
+                            v-model="deliveryForm.material"
+                            list="material-options"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                          />
+                          <datalist id="material-options">
+                            <template v-for="material in inventoryCatalog" :key="'material-' + material">
+                              <option :value="material"></option>
+                            </template>
+                          </datalist>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">Quantity</label>
+                            <input
+                              type="number"
+                              min="1"
+                              v-model.number="deliveryForm.quantity"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            />
+                          </div>
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">UOM</label>
+                            <input
+                              type="text"
+                              v-model="deliveryForm.uom"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            />
+                          </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">Dock</label>
+                            <input
+                              type="text"
+                              v-model="deliveryForm.dock"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            />
+                          </div>
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">Carrier</label>
+                            <input
+                              type="text"
+                              v-model="deliveryForm.carrier"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">ETA (minutes)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            v-model.number="deliveryForm.eta_minutes"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Notes</label>
+                          <input
+                            type="text"
+                            v-model="deliveryForm.notes"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                            placeholder="Optional context for receiving team"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        @click="logDelivery()"
+                        :disabled="logisticsLoading"
+                        class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                      >
+                        <svg v-show="logisticsLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                        </svg>
+                        <span>Log delivery</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex items-center justify-between gap-4">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Inventory coverage</h2>
+                      <p class="mt-1 text-sm text-slate-400">Live days of cover for the materials each line depends on.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('inventory_positions') + ' materials'"></span>
+                  </div>
+                  <div class="mt-4 overflow-x-auto">
+                    <table class="min-w-full divide-y divide-slate-800 text-sm">
+                          <thead class="bg-slate-900/60 text-xs uppercase tracking-wide text-slate-400">
+                            <tr>
+                              <th class="px-4 py-3 text-left">Material</th>
+                              <th class="px-4 py-3 text-left">Line</th>
+                              <th class="px-4 py-3 text-right">On hand</th>
+                              <th class="px-4 py-3 text-right">Days cover</th>
+                              <th class="px-4 py-3 text-right">Target</th>
+                              <th class="px-4 py-3 text-left">Status</th>
+                              <th class="px-4 py-3 text-right">Updated</th>
+                            </tr>
+                          </thead>
+                          <tbody class="divide-y divide-slate-800">
+                            <template v-if="inventoryPositions.length === 0">
+                              <tr>
+                                <td class="px-4 py-3 text-sm text-slate-500" colspan="7">No inventory tracked.</td>
+                              </tr>
+                            </template>
+                            <template v-for="item in inventoryPositions" :key="item.id">
+                              <tr class="bg-slate-950/50">
+                                <td class="px-4 py-3 font-medium text-slate-200" v-text="item.material"></td>
+                                <td class="px-4 py-3 text-slate-300" v-text="item.line_id ? lineName(item.line_id) : 'Shared resource'"></td>
+                                <td class="px-4 py-3 text-right text-slate-200" v-text="formatNumber(item.on_hand) + ' ' + item.uom"></td>
+                                <td class="px-4 py-3 text-right text-slate-200" v-text="formatDays(item.days_cover)"></td>
+                                <td class="px-4 py-3 text-right text-slate-200" v-text="item.target_days != null ? formatDays(item.target_days) : '—'"></td>
+                                <td class="px-4 py-3 text-slate-300">
+                                  <span class="font-medium" :class="inventoryStatusClasses(item.status)" v-text="item.status"></span>
+                                </td>
+                                <td class="px-4 py-3 text-right text-slate-400" v-text="formatTime(item.last_updated)"></td>
+                              </tr>
+                        </template>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('inventory_positions')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('inventory_positions')"
+                        @click="changePage('inventory_positions', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('inventory_positions')"
+                        @click="changePage('inventory_positions', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-5">
+                  <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-xl font-semibold text-white">Outbound shipping queue</h2>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('outbound_shipments') + ' loads'"></span>
+                  </div>
+                  <div class="space-y-4">
+                    <template v-if="outboundShipments.length === 0">
+                      <p class="text-sm text-slate-500">No shipments staged.</p>
+                    </template>
+                    <template v-for="shipment in outboundShipments" :key="'shipment-' + shipment.id">
+                      <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                        <div class="flex items-center justify-between gap-4">
+                          <div>
+                            <p class="text-sm font-semibold text-white" v-text="shipment.destination"></p>
+                            <p class="text-xs text-slate-400" v-text="(shipment.line_id ? lineName(shipment.line_id) : 'Shared order') + ' · ' + shipment.dock"></p>
+                          </div>
+                          <span class="text-xs font-medium uppercase tracking-wide text-slate-400" v-text="shipment.status"></span>
+                        </div>
+                        <p class="text-sm text-slate-300" v-text="shipment.contents"></p>
+                        <p class="text-xs text-slate-500">
+                          Trailer <span class="text-slate-300" v-text="shipment.trailer"></span>
+                          · Departs <span class="text-slate-300" v-text="formatTime(shipment.departing_at)"></span>
+                        </p>
+                      </article>
+                    </template>
+                  </div>
+                  <div class="flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('outbound_shipments')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('outbound_shipments')"
+                        @click="changePage('outbound_shipments', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('outbound_shipments')"
+                        @click="changePage('outbound_shipments', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                    <h3 class="text-sm font-semibold text-white">Stage outbound load</h3>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                      <div class="col-span-2">
+                        <label class="block text-xs font-medium text-slate-400">Line</label>
+                        <select
+                          v-model="shipmentForm.line_id"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        >
+                          <template v-for="line in lines" :key="'shipment-line-' + line.id">
+                            <option :value="line.id" v-text="line.name"></option>
+                          </template>
+                        </select>
+                      </div>
+                      <div class="col-span-2">
+                        <label class="block text-xs font-medium text-slate-400">Destination</label>
+                        <input
+                          type="text"
+                          v-model="shipmentForm.destination"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Dock</label>
+                        <input
+                          type="text"
+                          v-model="shipmentForm.dock"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Trailer</label>
+                        <input
+                          type="text"
+                          v-model="shipmentForm.trailer"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        />
+                      </div>
+                      <div class="col-span-2">
+                        <label class="block text-xs font-medium text-slate-400">Contents</label>
+                        <input
+                          type="text"
+                          v-model="shipmentForm.contents"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        />
+                      </div>
+                      <div class="col-span-2">
+                        <label class="block text-xs font-medium text-slate-400">Departs in (minutes)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          v-model.number="shipmentForm.departure_minutes"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      @click="logShipment()"
+                      :disabled="shipmentLoading"
+                      class="inline-flex items-center gap-2 rounded-xl border border-emerald-400/50 bg-transparent px-4 py-2 text-sm font-semibold text-emerald-200 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <svg v-show="shipmentLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                      </svg>
+                      <span>Stage shipment</span>
+                    </button>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                    <h3 class="text-sm font-semibold text-white">Update shipment status</h3>
+                    <p class="text-xs text-slate-500">Keep the dock and customer service aligned with truck departures.</p>
+                    <template v-if="outboundShipments.length === 0">
+                      <p class="text-xs text-slate-500">No shipments to update.</p>
+                    </template>
+                    <template v-if="outboundShipments.length > 0">
+                      <div class="space-y-3 text-sm">
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Shipment</label>
+                          <select
+                            v-model="shipmentStatusForm.shipment_id"
+                            @change="syncShipmentStatusDefaults()"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                          >
+                            <template v-for="shipment in outboundShipments" :key="'update-shipment-' + shipment.id">
+                              <option :value="shipment.id" v-text="shipment.reference + ' · ' + shipment.destination"></option>
+                            </template>
+                          </select>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">Status</label>
+                            <select
+                              v-model="shipmentStatusForm.status"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                            >
+                              <option>Staged</option>
+                              <option>Loading</option>
+                              <option>Departed</option>
+                              <option>Delivered</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label class="block text-xs font-medium text-slate-400">Departs in (minutes)</label>
+                            <input
+                              type="number"
+                              min="0"
+                              v-model.number="shipmentStatusForm.departure_minutes"
+                              class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-slate-500 focus:ring-slate-500"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          @click="updateShipmentStatus()"
+                          :disabled="shipmentStatusSaving"
+                          class="inline-flex items-center gap-2 rounded-xl border border-slate-600 bg-transparent px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <svg v-show="shipmentStatusSaving" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                          </svg>
+                          <span>Apply status change</span>
+                        </button>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Global feed</h2>
+                  <ol class="mt-4 space-y-2 text-xs">
+                    <template v-if="globalUpdates.length === 0">
+                      <p class="text-slate-500">No updates yet.</p>
+                    </template>
+                    <template v-for="update in globalUpdates" :key="'logistics-feed-' + update.id">
+                      <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <p class="font-medium text-slate-200" v-text="update.message"></p>
+                        <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+              </aside>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('logistics')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">This viewer does not include materials & logistics. Switch personas to manage inbound deliveries, inventory coverage, and outbound loads.</p>
+                </section>
+              </template>
+            </div>
+          </template>
+          <template v-if="isPage('safety')">
+            <div>
+              <template v-if="canAccessPage('safety')">
+                <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <section class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Safety incident board</h2>
+                      <p class="mt-1 text-sm text-slate-400">EHS logs issues and broadcasts containment actions to every crew.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('safety_incidents') + ' active'"></span>
+                  </div>
+                  <div class="mt-4 grid gap-4 lg:grid-cols-[1.3fr_1fr]">
+                    <div class="space-y-4">
+                      <template v-if="safetyIncidents.length === 0">
+                        <p class="text-sm text-slate-500">No incidents logged this shift.</p>
+                      </template>
+                    <template v-for="incident in safetyIncidents" :key="'incident-' + incident.id">
+                      <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                        <div class="flex items-start justify-between gap-4">
+                          <div>
+                            <p class="text-sm font-semibold text-white" v-text="incident.area"></p>
+                              <p class="text-xs text-slate-400" v-text="incident.line_id ? lineName(incident.line_id) : 'Plant wide'"></p>
+                            </div>
+                            <span class="text-xs font-semibold uppercase tracking-wide" :class="safetySeverityClasses(incident.severity)" v-text="incident.severity"></span>
+                          </div>
+                          <p class="text-sm text-slate-300" v-text="incident.description"></p>
+                          <p class="text-xs text-slate-500">
+                            Action <span class="text-slate-300" v-text="incident.corrective_action"></span>
+                          </p>
+                          <p class="text-xs text-slate-500" v-text="'Logged ' + formatTime(incident.logged_at)"></p>
+                        </article>
+                      </template>
+                      <div class="flex items-center justify-between text-xs text-slate-500">
+                        <span v-text="paginationWindowLabel('safety_incidents')"></span>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasPrev('safety_incidents')"
+                            @click="changePage('safety_incidents', -1)"
+                          >
+                            Prev
+                          </button>
+                          <button
+                            type="button"
+                            class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                            :disabled="!hasNext('safety_incidents')"
+                            @click="changePage('safety_incidents', 1)"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 space-y-3">
+                      <div>
+                        <h3 class="text-sm font-semibold text-white">Log safety incident</h3>
+                        <p class="mt-1 text-xs text-slate-500">Alerts supervisors and updates compliance expectations.</p>
+                      </div>
+                      <div class="space-y-3 text-sm">
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Line</label>
+                          <select
+                            v-model="safetyIncidentForm.line_id"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                          >
+                            <option value="">Plant wide</option>
+                            <template v-for="line in lines" :key="'safety-line-' + line.id">
+                              <option :value="line.id" v-text="line.name"></option>
+                            </template>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Area</label>
+                          <input
+                            type="text"
+                            v-model="safetyIncidentForm.area"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                          />
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Severity</label>
+                          <select
+                            v-model="safetyIncidentForm.severity"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                          >
+                            <option>Near miss</option>
+                            <option>First aid</option>
+                            <option>Recordable</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Description</label>
+                          <textarea
+                            rows="3"
+                            v-model="safetyIncidentForm.description"
+                            class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                            placeholder="What happened and where"
+                          ></textarea>
+                        </div>
+                        <div>
+                          <label class="block text-xs font-medium text-slate-400">Corrective action</label>
+                          <input
+                            type="text"
+                            v-model="safetyIncidentForm.corrective_action"
+                            class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        @click="logSafetyIncident()"
+                        :disabled="safetyLoading"
+                        class="inline-flex items-center gap-2 rounded-xl border border-rose-400/60 bg-rose-500/10 px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <svg v-show="safetyLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                        </svg>
+                        <span>Log incident</span>
+                      </button>
+                      <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                        <div>
+                          <h3 class="text-sm font-semibold text-white">Update incident status</h3>
+                          <p class="text-xs text-slate-500">Close the loop on investigations and broadcast corrective actions.</p>
+                        </div>
+                        <template v-if="safetyIncidents.length === 0">
+                          <p class="text-xs text-slate-500">No incidents logged this shift.</p>
+                        </template>
+                        <template v-if="safetyIncidents.length > 0">
+                          <div class="space-y-3 text-sm">
+                            <div>
+                              <label class="block text-xs font-medium text-slate-400">Incident</label>
+                              <select
+                                v-model="incidentUpdateForm.incident_id"
+                                @change="loadIncidentDefaults()"
+                                class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                              >
+                                <template v-for="incident in safetyIncidents" :key="'incident-option-' + incident.id">
+                                  <option :value="incident.id" v-text="incident.area + ' — ' + incident.severity"></option>
+                                </template>
+                              </select>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3">
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Status</label>
+                                <select
+                                  v-model="incidentUpdateForm.status"
+                                  class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                                >
+                                  <option>Open</option>
+                                  <option>Monitoring</option>
+                                  <option>Closed</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label class="block text-xs font-medium text-slate-400">Corrective action</label>
+                                <input
+                                  type="text"
+                                  v-model="incidentUpdateForm.corrective_action"
+                                  class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:ring-rose-400"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              @click="updateSafetyIncident()"
+                              :disabled="incidentUpdating"
+                              class="inline-flex items-center gap-2 rounded-xl border border-rose-400/60 bg-transparent px-4 py-2 text-sm font-semibold text-rose-200 transition hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              <svg v-show="incidentUpdating" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                              </svg>
+                              <span>Update incident</span>
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-5">
+                  <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-xl font-semibold text-white">Training & compliance</h2>
+                    <span class="text-xs text-slate-400" v-text="trainingCompliance ? 'Updated ' + formatTime(trainingCompliance.last_updated) : ''"></span>
+                  </div>
+                  <template v-if="trainingCompliance">
+                    <div class="space-y-5">
+                      <div class="grid gap-4 sm:grid-cols-3">
+                        <template v-if="canViewScope('maintenance')">
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                          <p class="text-xs uppercase tracking-wide text-slate-400">Lockout/tagout</p>
+                          <p class="text-2xl font-semibold text-white" v-text="formatPercent(trainingCompliance.lockout_tagout)"></p>
+                          <div class="h-2 rounded-full bg-slate-800">
+                            <div
+                              class="h-2 rounded-full bg-emerald-500"
+                              :style="`width: ${Math.min(Math.max(trainingCompliance.lockout_tagout || 0, 0), 100)}%`"
+                            ></div>
+                          </div>
+                          </div>
+                        </template>
+                        <template v-if="canViewScope('quality')">
+                          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                          <p class="text-xs uppercase tracking-wide text-slate-400">PPE compliance</p>
+                          <p class="text-2xl font-semibold text-white" v-text="formatPercent(trainingCompliance.ppe)"></p>
+                          <div class="h-2 rounded-full bg-slate-800">
+                            <div
+                              class="h-2 rounded-full bg-sky-500"
+                              :style="`width: ${Math.min(Math.max(trainingCompliance.ppe || 0, 0), 100)}%`"
+                            ></div>
+                          </div>
+                        </template>
+                        </div>
+                        <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                          <p class="text-xs uppercase tracking-wide text-slate-400">Forklift refreshers</p>
+                          <p class="text-2xl font-semibold text-white" v-text="formatPercent(trainingCompliance.forklift)"></p>
+                          <div class="h-2 rounded-full bg-slate-800">
+                            <div
+                              class="h-2 rounded-full bg-amber-500"
+                              :style="`width: ${Math.min(Math.max(trainingCompliance.forklift || 0, 0), 100)}%`"
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
+                        <p class="text-sm text-slate-300">
+                          <span class="font-semibold" v-text="trainingCompliance.audits_due"></span>
+                          compliance audits due before shift end.
+                        </p>
+                      </div>
+                    </div>
+                  </template>
+                  <template v-if="!trainingCompliance">
+                    <p class="text-sm text-slate-500">Training metrics are loading.</p>
+                  </template>
+                </div>
+              </section>
+
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-5">
+                  <div class="flex items-center justify-between gap-4">
+                    <h2 class="text-xl font-semibold text-white">Safety walks</h2>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('safety_walks') + ' logged'"></span>
+                  </div>
+                  <div class="space-y-4">
+                    <template v-if="safetyWalks.length === 0">
+                      <p class="text-sm text-slate-500">No walks recorded yet today.</p>
+                    </template>
+                    <template v-for="walk in safetyWalks" :key="'walk-' + walk.id">
+                      <article class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span v-text="walk.area"></span>
+                          <span v-text="formatTime(walk.logged_at)"></span>
+                        </div>
+                        <p class="text-sm font-semibold text-white" v-text="walk.observer"></p>
+                        <p class="text-sm text-slate-300" v-text="walk.notes"></p>
+                        <template v-if="walk.follow_up">
+                          <p class="text-xs text-slate-500" v-text="'Follow-up: ' + walk.follow_up"></p>
+                        </template>
+                      </article>
+                    </template>
+                  </div>
+                  <div class="flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('safety_walks')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('safety_walks')"
+                        @click="changePage('safety_walks', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('safety_walks')"
+                        @click="changePage('safety_walks', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                  <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-3">
+                    <h3 class="text-sm font-semibold text-white">Post safety walk</h3>
+                    <div class="space-y-3 text-sm">
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Observer</label>
+                        <input
+                          type="text"
+                          v-model="safetyWalkForm.observer"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Area</label>
+                        <input
+                          type="text"
+                          v-model="safetyWalkForm.area"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                        />
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Notes</label>
+                        <textarea
+                          rows="3"
+                          v-model="safetyWalkForm.notes"
+                          class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                          placeholder="Observations and shout-outs"
+                        ></textarea>
+                      </div>
+                      <div>
+                        <label class="block text-xs font-medium text-slate-400">Follow-up</label>
+                        <input
+                          type="text"
+                          v-model="safetyWalkForm.follow_up"
+                          class="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-sky-400 focus:ring-sky-400"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      @click="logSafetyWalk()"
+                      :disabled="walkLoading"
+                      class="inline-flex items-center gap-2 rounded-xl border border-sky-400/60 bg-sky-500/10 px-4 py-2 text-sm font-semibold text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <svg v-show="walkLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                      </svg>
+                      <span>Post walk</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Global feed</h2>
+                  <ol class="mt-4 space-y-2 text-xs">
+                    <template v-if="globalUpdates.length === 0">
+                      <p class="text-slate-500">No updates yet.</p>
+                    </template>
+                    <template v-for="update in globalUpdates" :key="'safety-feed-' + update.id">
+                      <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <p class="font-medium text-slate-200" v-text="update.message"></p>
+                        <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+              </aside>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('safety')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">This viewer does not include the safety center. Switch personas to review incidents, corrective actions, and safety walks.</p>
+                </section>
+              </template>
+            </div>
+          </template>
+          <template v-if="isPage('handover')">
+            <div>
+              <template v-if="canAccessPage('handover')">
+                <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <section class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <h2 class="text-xl font-semibold text-white">Shift handover log</h2>
+                      <p class="mt-1 text-sm text-slate-400">Supervisors narrate the shift so the next team hits the ground running.</p>
+                    </div>
+                    <span class="text-xs text-slate-400" v-text="paginatedTotal('shift_notes') + ' notes'"></span>
+                  </div>
+                  <ol class="mt-4 space-y-4">
+                    <template v-if="shiftNotes.length === 0">
+                      <p class="text-sm text-slate-500">No notes logged yet.</p>
+                    </template>
+                    <template v-for="note in shiftNotes" :key="note.id">
+                      <li class="rounded-2xl border border-slate-800 bg-slate-950/60 p-5 space-y-2">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span v-text="'Shift ' + note.shift"></span>
+                          <span v-text="formatTime(note.logged_at)"></span>
+                        </div>
+                        <p class="text-sm font-semibold text-white" v-text="note.focus"></p>
+                        <p class="text-sm text-slate-300" v-text="note.note"></p>
+                        <p class="text-xs uppercase tracking-wide text-slate-500" v-text="note.author"></p>
+                      </li>
+                    </template>
+                  </ol>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-500">
+                    <span v-text="paginationWindowLabel('shift_notes')"></span>
+                    <div class="flex items-center gap-2">
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasPrev('shift_notes')"
+                        @click="changePage('shift_notes', -1)"
+                      >
+                        Prev
+                      </button>
+                      <button
+                        type="button"
+                        class="rounded-lg border border-slate-700 px-3 py-1 text-xs text-slate-300 transition hover:border-slate-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        :disabled="!hasNext('shift_notes')"
+                        @click="changePage('shift_notes', 1)"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6 space-y-4">
+                  <div>
+                    <h2 class="text-xl font-semibold text-white">Add handover note</h2>
+                    <p class="mt-1 text-sm text-slate-400">Broadcast to tablets and the control room simultaneously.</p>
+                  </div>
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label class="block text-xs font-medium text-slate-400">Author</label>
+                      <input
+                        type="text"
+                        v-model="handoverForm.author"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label class="block text-xs font-medium text-slate-400">Focus</label>
+                      <input
+                        type="text"
+                        v-model="handoverForm.focus"
+                        class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label class="block text-xs font-medium text-slate-400">Note</label>
+                    <textarea
+                      rows="4"
+                      v-model="handoverForm.note"
+                      class="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                      placeholder="E.g. Crew completed changeover early; verify torque logs at start of next shift"
+                    ></textarea>
+                  </div>
+                  <button
+                    type="button"
+                    @click="submitShiftNote()"
+                    :disabled="handoverLoading"
+                    class="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-semibold text-emerald-950 shadow shadow-emerald-500/30 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-emerald-500/50"
+                  >
+                    <svg v-show="handoverLoading" class="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3.5-3.5L12 1v4a7 7 0 00-7 7h-1z"></path>
+                    </svg>
+                    <span>Post note</span>
+                  </button>
+                </div>
+              </section>
+
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Global activity</h2>
+                  <ol class="mt-4 space-y-2 text-xs">
+                    <template v-if="globalUpdates.length === 0">
+                      <p class="text-slate-500">No updates yet.</p>
+                    </template>
+                    <template v-for="update in globalUpdates" :key="'handover-feed-' + update.id">
+                      <li class="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                        <p class="font-medium text-slate-200" v-text="update.message"></p>
+                        <p class="mt-1 text-[11px] text-slate-500" v-text="formatTime(update.ts)"></p>
+                      </li>
+                    </template>
+                  </ol>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/80 bg-slate-900/60 shadow-2xl shadow-slate-950/50 p-6">
+                  <h2 class="text-xl font-semibold text-white">Line scorecard</h2>
+                  <ul class="mt-4 space-y-3 text-sm">
+                    <template v-for="line in lines" :key="'handover-line-' + line.id">
+                      <li class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 space-y-2">
+                        <div class="flex items-center justify-between">
+                          <p class="font-semibold text-white" v-text="line.name"></p>
+                          <span class="inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold" :class="statusBadgeClasses(line.status)" v-text="line.status"></span>
+                        </div>
+                        <p class="text-xs text-slate-400">
+                          OEE <span class="font-medium text-slate-200" v-text="formatPercent(line.oee)"></span>
+                          · Active SKU <span class="font-medium text-slate-200" v-text="line.active_sku"></span>
+                        </p>
+                      </li>
+                    </template>
+                  </ul>
+                </div>
+              </aside>
+                </div>
+              </template>
+              <template v-if="!canAccessPage('handover')">
+                <section class="rounded-3xl border border-slate-800/80 bg-slate-900/60 p-6 text-sm text-slate-300 shadow-2xl shadow-slate-950/50">
+                  <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+                  <p class="mt-2 text-slate-400">This viewer does not include the shift handover room. Switch personas to draft notes and review training coverage.</p>
+                </section>
+              </template>
+            </div>
+          </template>
+        </div>
+      </main>
+    </div>
+
+    
+        <script type="module" src="{{ url_for('static', filename='js/app-baseline.js') }}"></script>
+
+
+  </body>
+</html>

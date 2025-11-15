@@ -1,0 +1,29 @@
+site_name: Verity
+site_description: "Server-truth data layer for calm UI"
+site_url: https://example.com
+repo_url: https://github.com/example/verity
+repo_name: example/verity
+nav:
+  - Home: index.md
+  - Philosophy: philosophy.md
+  - Guides:
+      - Getting Started: guides/getting-started.md
+      - State Model: guides/state-model.md
+  - Reference:
+      - Core Registry: reference/core.md
+      - Framework Adapters: reference/adapters.md
+  - Examples: examples.md
+  - Contributing: contributing.md
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.top
+    - content.code.annotate
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.highlight
+  - pymdownx.superfences

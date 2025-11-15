@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>POC 2 — Library-driven Data Layer</title>
+
+
+    <!-- Tailwind (dev CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Library core first, then framework adapter + app registration, then Alpine -->
+    <script src="{{ url_for('verity_shared_static.static', filename='lib/core.js') }}" defer></script>
+    <script src="{{ url_for('verity_shared_static.static', filename='adapters/alpine.js') }}" defer></script>
+    <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script>
+        (function () {
+            const loadDevtools = () => {
+                if (window.__VERITY_DL_DEVTOOLS__ && typeof window.__VERITY_DL_DEVTOOLS__.show === 'function') {
+                    try { window.__VERITY_DL_DEVTOOLS__.show(); } catch { }
+                    return;
+                }
+                if (window.__VDL_DEVTOOLS_LOADING__) return;
+                window.__VDL_DEVTOOLS_LOADING__ = true;
+                const script = document.createElement('script');
+                script.src = "{{ url_for('verity_shared_static.static', filename='devtools/devtools.js') }}";
+                script.defer = true;
+                document.head.appendChild(script);
+            };
+
+            const params = new URLSearchParams(window.location.search);
+            const flag = params.get('devtools');
+            if (flag && flag !== '0' && flag !== 'false') {
+                loadDevtools();
+            }
+
+            window.addEventListener('keydown', (event) => {
+                if (!event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
+                if (event.key && event.key.toLowerCase() === 'd') {
+                    event.preventDefault();
+                    loadDevtools();
+                }
+            });
+
+            window.VerityDL = window.VerityDL || {};
+            window.VerityDL.enableDevtools = loadDevtools;
+        })();
+    </script>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <main class="max-w-6xl mx-auto px-4 py-8" x-data>
+        <header class="mb-6">
+
+            <h1 class="text-2xl font-bold">POC 2 — Library-driven Data Layer</h1>
+
+            <p class="text-sm text-slate-600">Alpine only watches; the library fetches, levels, staleness & directives.
+            </p>
+        </header>
+
+        <!-- Controls -->
+        <section class="mb-6 bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+            <div class="flex flex-wrap gap-3 items-end w-full">
+                <div>
+                    <label class="text-xs text-slate-600">New invoice title</label>
+                    <input id="newTitle" type="text"
+                        class="mt-1 w-64 rounded border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                        placeholder="e.g. New service" />
+                </div>
+                <div>
+                    <label class="text-xs text-slate-600">Amount (cents)</label>
+                    <input id="newAmount" type="number"
+                        class="mt-1 w-40 rounded border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                        value="1000" />
+
+                </div>
+
+                <button x-data="{ saving:false }" @click="
+                saving=true;
+                fetch('/api/invoice', {
+                  method:'POST', headers: DL.directiveHeaders({'Content-Type':'application/json','X-Client-ID': DL.clientId()}),
+                  body: JSON.stringify({
+                    title: document.getElementById('newTitle').value,
+                    amount_cents: Number(document.getElementById('newAmount').value)
+
+                  })
+                })
+
+                .then(r=>r.json())
+                .then(json=>{
+                  // stop button spinner immediately after response
+                  saving=false;
+                  // fire-and-forget the refresh directives
+                  if(json && Array.isArray(json.directives)){
+                    $store.lib.apply(json.directives);
+                  }
+                })
+                .catch(()=>{ saving=false; })
+              " class="inline-flex items-center gap-2 px-4 py-2 rounded bg-indigo-600 text-white text-sm hover:bg-indigo-700 disabled:opacity-50"
+                    :disabled="saving">
+                    <span x-show="saving"
+                        class="inline-block h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin"></span>
+                    <span x-text="saving ? 'Creating…' : 'Create invoice'"></span>
+                </button>
+            </div>
+
+        </section>
+
+        <!-- Invoices Table -->
+        <section x-data="invoicesPanel()" class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div class="px-4 py-4 bg-slate-50 border-b space-y-4">
+                <div class="flex flex-wrap gap-3 items-center justify-between">
+                    <h2 class="text-sm font-semibold">Invoices (parameterized collections demo)</h2>
+                    <button type="button"
+                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100"
+                        @click="reload()">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                            class="w-4 h-4 text-slate-500">
+                            <path fill-rule="evenodd"
+                                d="M4.707 4.293a1 1 0 010 1.414A6.002 6.002 0 0010 17a6 6 0 005.477-8.09l1.598-1.6a.75.75 0 00-1.06-1.06l-1.72 1.72a.75.75 0 001.06 1.06l.284-.284A4.5 4.5 0 1110 15.5a4.5 4.5 0 01-4.255-6.17.75.75 0 10-1.382-.552 6 6 0 00.706 6.331 6 6 0 01-.362-8.08.998.998 0 01.707-.236z"
+                                clip-rule="evenodd" />
+                        </svg>
+                        <span>Reload current view</span>
+                    </button>
+                </div>
+
+                <div class="flex flex-wrap gap-3 items-end">
+                    <div class="w-full md:w-64">
+                        <label class="text-xs text-slate-600">Search title or description</label>
+                        <input type="text" x-model="search"
+                            class="mt-1 w-full rounded border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                            placeholder="e.g. retainer" />
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-600">Status filter</label>
+                        <select x-model="statusFilter"
+                            class="mt-1 w-44 rounded border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="all">All statuses</option>
+                            <option value="pending">Pending</option>
+                            <option value="active">Active</option>
+                            <option value="paused">Paused</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-600">Sort by</label>
+                        <select x-model="sortField"
+                            class="mt-1 w-44 rounded border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                            <option value="updated_at">Updated</option>
+                            <option value="amount_cents">Amount</option>
+                            <option value="title">Title</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-xs text-slate-600">Direction</label>
+                        <button type="button"
+                            class="mt-1 inline-flex items-center gap-1 px-3 py-1.5 rounded border text-xs bg-white hover:bg-slate-100"
+                            @click="sortDir = sortDir === 'asc' ? 'desc' : 'asc'">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                                class="w-3.5 h-3.5 text-slate-500" :class="{ 'rotate-180': sortDir === 'asc' }">
+                                <path fill-rule="evenodd"
+                                    d="M10.53 3.22a.75.75 0 010 1.06L6.31 8.5h8.94a.75.75 0 010 1.5H6.31l4.22 4.22a.75.75 0 01-1.06 1.06l-5.5-5.5a.75.75 0 010-1.06l5.5-5.5a.75.75 0 011.06 0z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span x-text="sortDir === 'asc' ? 'Ascending' : 'Descending'"></span>
+                        </button>
+                    </div>
+                    <div class="ml-auto">
+                        <div
+                            class="relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full border bg-white min-w-[120px] justify-center">
+                            <template x-if="!col().meta.lastFetched || col().meta.isLoading">
+                                <div class="w-14 h-4 rounded bg-slate-200 animate-pulse"></div>
+                            </template>
+                            <template x-if="col().meta.lastFetched && !col().meta.isLoading">
+                                <div class="text-xs text-slate-600">
+                                    <span class="mr-1">Count</span>
+                                    <span class="text-sm font-semibold" x-text="col().data.count"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap gap-3 items-center text-xs text-slate-500">
+                    <span>Showing <span class="font-semibold" x-text="statusLabel()"></span>, sorted by <span
+                            class="font-semibold" x-text="sortLabel()"></span>
+                        (<span x-text="sortDir === 'asc' ? 'Ascending' : 'Descending'"></span>)</span>
+                </div>
+
+                <div class="pt-3 border-t border-slate-200">
+                    <p class="text-xs text-slate-500 mb-2">Quick server-side summaries</p>
+                    <div class="flex flex-wrap gap-3">
+                        <template x-for="preset in ['all','pending','active','paused']" :key="preset">
+                            <div x-data="statusSummary(preset)"
+                                class="flex-1 min-w-[150px] cursor-pointer border border-slate-200 rounded-lg bg-white px-3 py-3 hover:border-indigo-400 transition"
+                                :class="{ 'border-indigo-500 shadow-sm': statusFilter === preset }"
+                                @click="window.dispatchEvent(new CustomEvent('invoices:set-status', { detail: preset }))">
+                                <div class="text-[10px] uppercase tracking-wide text-slate-500 mb-1" x-text="label()"></div>
+                                <template x-if="isLoading()">
+                                    <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                </template>
+                                <template x-if="!isLoading()">
+                                    <div class="text-lg font-semibold text-slate-900" x-text="count()"></div>
+                                </template>
+                                <div class="mt-1 text-[11px] text-indigo-600" x-text="statusFilter === preset ? 'Active view' : 'Click to view'"></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-600">ID</th>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-600">Title</th>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-600">Amount</th>
+                            <th class="px-4 py-2 text-left text-xs font-semibold text-slate-600">Status</th>
+                            <th class="px-4 py-2 text-right text-xs font-semibold text-slate-600">Actions</th>
+                        </tr>
+                    </thead>
+
+                    <tbody class="divide-y divide-slate-100">
+                        <!-- Skeleton rows BEFORE ids arrive -->
+                        <template x-if="initialLoading() || isEmptyLoading()">
+                            <template>
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-48 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-20 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+                                </tr>
+
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-40 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-12 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-56 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-24 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-20 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-44 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-14 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+                                </tr>
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-52 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-20 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-12 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+                                </tr>
+
+                                <tr class="hover:bg-slate-50 transition" aria-hidden="true">
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-10 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-40 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2">
+                                        <div class="h-4 w-14 rounded bg-slate-200 animate-pulse"></div>
+                                    </td>
+                                    <td class="px-4 py-2 text-right">
+                                        <div class="h-8 w-24 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </td>
+
+                                </tr>
+                            </template>
+
+                        </template>
+
+                        <template x-if="!initialLoading() && !isEmptyLoading() && ids().length === 0">
+                            <tr>
+                                <td colspan="5" class="px-4 py-6 text-sm text-slate-500 text-center">
+                                    No invoices match the current filters.
+                                </td>
+                            </tr>
+                        </template>
+
+
+                        <!-- Real rows once ids are present -->
+                        <template x-for="id in ids()" :key="id">
+                            <tr class="hover:bg-slate-50 transition relative">
+                                <!-- ID -->
+
+                                <td class="px-4 py-2 text-sm text-slate-700">#<span x-text="id"></span></td>
+
+
+                                <!-- Title -->
+                                <td class="px-4 py-2 text-sm">
+                                    <template x-if="row(id).data">
+                                        <span x-text="row(id).data.title"></span>
+                                    </template>
+                                    <template x-if="!row(id).data">
+                                        <div class="h-4 w-44 rounded bg-slate-200 animate-pulse"></div>
+                                    </template>
+                                </td>
+
+                                <!-- Amount -->
+                                <td class="px-4 py-2 text-sm text-slate-700">
+                                    <template x-if="row(id).data">
+                                        <span>$<span x-text="(row(id).data.amount_cents/100).toFixed(2)"></span></span>
+                                    </template>
+                                    <template x-if="!row(id).data">
+                                        <div class="h-4 w-20 rounded bg-slate-200 animate-pulse"></div>
+                                    </template>
+                                </td>
+
+                                <!-- Status -->
+                                <td class="px-4 py-2 text-sm font-medium">
+                                    <template x-if="row(id).data">
+                                        <span :class="{
+                    'text-amber-700': row(id).data.status==='pending',
+
+                    'text-emerald-700': row(id).data.status==='active',
+                    'text-slate-700': row(id).data.status==='paused',
+
+                  }" x-text="row(id).data.status"></span>
+                                    </template>
+                                    <template x-if="!row(id).data">
+                                        <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                                    </template>
+
+                                </td>
+
+                                <!-- Actions -->
+                                <td class="px-4 py-2 text-right">
+
+                                    <template x-if="row(id).data">
+                                        <div class="inline-flex items-center gap-2" x-data="{ saving:false }">
+                                            <button
+                                                class="px-3 py-1.5 text-sm rounded bg-white border hover:bg-slate-50"
+                                                @click="openDetail(id)">Details</button>
+
+                                            <!-- Toggle with immediate button spinner (stops after response; row overlay follows directives) -->
+                                            <button
+                                                class="px-3 py-1.5 text-sm rounded bg-white border hover:bg-slate-50 inline-flex items-center gap-2 disabled:opacity-50"
+                                                :disabled="saving" @click="
+                            saving=true;
+                            const current=row(id).data?.status;
+                            const next=(current==='active')?'paused':'active';
+                            fetch(`/api/invoice/${id}`, {
+                              method:'PUT', headers: DL.directiveHeaders({'Content-Type':'application/json','X-Client-ID': DL.clientId()}),
+                              body: JSON.stringify({ status: next })
+                            })
+
+                            .then(r=>r.json())
+                            .then(json=>{
+                              // stop button spinner immediately after server replies
+                              saving=false;
+                              // fire-and-forget directives (row overlay & data refresh)
+                              if(json && Array.isArray(json.directives)){
+                                $store.lib.apply(json.directives);
+                              }
+                            })
+                            .catch(()=>{ saving=false; })
+                          ">
+                                                <span x-show="saving"
+                                                    class="inline-block h-4 w-4 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></span>
+                                                <span x-text="saving ? 'Saving…' : 'Toggle'"></span>
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <template x-if="!row(id).data">
+                                        <div class="h-8 w-28 rounded bg-slate-200 animate-pulse ml-auto"></div>
+                                    </template>
+                                </td>
+
+                                <!-- Loud row mask for explicit refreshes -->
+                                <td class="p-0">
+                                    <div x-show="row(id).meta.isLoading"
+                                        class="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-10">
+                                        <span
+                                            class="inline-block h-5 w-5 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></span>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+        </section>
+
+        <!-- Detail Drawer -->
+        <template x-if="$store.ui.detailId">
+            <section x-transition class="mt-6 bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div class="px-4 py-3 bg-slate-50 border-b flex items-center justify-between">
+                    <h2 class="text-sm font-semibold">Invoice detail</h2>
+                    <button class="text-slate-600 hover:text-slate-900" @click="$store.ui.detailId=null">Close</button>
+                </div>
+
+                <div class="p-4 relative" x-data="detailPanel()">
+                    <!-- Grid -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <div class="text-xs text-slate-500">ID</div>
+
+                            <template x-if="it() && it().data">
+                                <div class="text-sm font-medium" x-text="it().data.id"></div>
+                            </template>
+
+                            <template x-if="!(it() && it().data)">
+                                <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+
+                            </template>
+                        </div>
+
+                        <div>
+
+                            <div class="text-xs text-slate-500">Updated</div>
+                            <template x-if="it() && it().data">
+                                <div class="text-sm text-slate-700" x-text="it().data.updated_at"></div>
+                            </template>
+                            <template x-if="!(it() && it().data)">
+                                <div class="h-4 w-40 rounded bg-slate-200 animate-pulse"></div>
+                            </template>
+                        </div>
+
+                        <div class="sm:col-span-2">
+                            <div class="text-xs text-slate-500">Title</div>
+                            <template x-if="it() && it().data">
+                                <div class="text-sm font-medium" x-text="it().data.title"></div>
+
+                            </template>
+                            <template x-if="!(it() && it().data)">
+                                <div class="h-4 w-64 rounded bg-slate-200 animate-pulse"></div>
+                            </template>
+
+                        </div>
+
+
+                        <div>
+                            <div class="text-xs text-slate-500">Amount</div>
+                            <template x-if="it() && it().data">
+                                <div class="text-sm font-medium">
+                                    $<span x-text="((it().data.amount_cents ?? 0)/100).toFixed(2)"></span>
+
+                                </div>
+                            </template>
+                            <template x-if="!(it() && it().data)">
+                                <div class="h-4 w-24 rounded bg-slate-200 animate-pulse"></div>
+                            </template>
+                        </div>
+
+                        <div>
+                            <div class="text-xs text-slate-500">Status</div>
+                            <template x-if="it() && it().data">
+                                <div class="text-sm font-medium" x-text="it().data.status"></div>
+                            </template>
+                            <template x-if="!(it() && it().data)">
+                                <div class="h-4 w-16 rounded bg-slate-200 animate-pulse"></div>
+                            </template>
+                        </div>
+
+                        <div class="sm:col-span-2">
+
+                            <div class="text-xs text-slate-500">Description (expanded)</div>
+
+                            <template x-if="it() && it().data && typeof it().data.description === 'string'">
+                                <div class="text-sm text-slate-700" x-text="it().data.description"></div>
+                            </template>
+                            <template x-if="!(it() && it().data && typeof it().data.description === 'string')">
+
+                                <div class="space-y-2">
+                                    <div class="h-4 w-full max-w-[36rem] rounded bg-slate-200 animate-pulse"></div>
+                                    <div class="h-4 w-[80%] rounded bg-slate-200 animate-pulse"></div>
+                                    <div class="h-4 w-[60%] rounded bg-slate-200 animate-pulse"></div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="mt-4 flex gap-2" x-data="{ saving:false }">
+                        <button
+                            class="px-3 py-1.5 text-sm rounded bg-white border hover:bg-slate-50 inline-flex items-center gap-2 disabled:opacity-50"
+                            :disabled="saving || !$store.ui.detailId" @click="
+                    saving=true;
+
+                    const id=$store.ui.detailId;
+                    const current=it()?.data?.status;
+                    const next=(current==='active')?'paused':'active';
+                    fetch(`/api/invoice/${id}`, { method:'PUT', headers: DL.directiveHeaders({'Content-Type':'application/json','X-Client-ID': DL.clientId()}), body: JSON.stringify({ status: next }) })
+                      .then(r=>r.json())
+                      .then(json=>{
+                        // stop button spinner right after response
+                        saving=false;
+                        // row/detail overlays will follow directives
+                        if(json && Array.isArray(json.directives)){
+                          $store.lib.apply(json.directives);
+                        }
+                      })
+                      .catch(()=>{ saving=false; });
+                  ">
+                            <span x-show="saving"
+                                class="inline-block h-4 w-4 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></span>
+                            <span x-text="saving ? 'Saving…' : 'Toggle status'"></span>
+                        </button>
+
+                        <button
+                            class="px-3 py-1.5 text-sm rounded bg-white border hover:bg-red-50 inline-flex items-center gap-2 disabled:opacity-50"
+                            :disabled="saving || !$store.ui.detailId" @click="
+                    saving=true;
+                    const id=$store.ui.detailId;
+                    fetch(`/api/invoice/${id}`, { method:'DELETE', headers: DL.directiveHeaders({'X-Client-ID': DL.clientId()}) })
+
+                     .then(r=>r.json())
+                     .then(json=>{
+                       saving=false;
+                       if(json && Array.isArray(json.directives)){
+                         $store.lib.apply(json.directives);
+                       }
+                       $store.ui.detailId=null;
+                     })
+                     .catch(()=>{ saving=false; });
+                  ">
+                            <span x-show="saving"
+                                class="inline-block h-4 w-4 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></span>
+                            <span x-text="saving ? 'Deleting…' : 'Delete'"></span>
+                        </button>
+                    </div>
+
+                    <!-- Loud detail mask (explicit refresh) -->
+                    <div x-show="it()?.meta?.isLoading"
+                        class="absolute inset-0 bg-white/70 backdrop-blur-[1px] flex items-center justify-center z-10">
+                        <span
+                            class="inline-block h-6 w-6 rounded-full border-2 border-slate-400 border-t-transparent animate-spin"></span>
+                    </div>
+
+                </div>
+            </section>
+        </template>
+    </main>
+</body>
+
+</html>

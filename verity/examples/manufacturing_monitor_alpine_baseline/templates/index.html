@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manufacturing Monitor · Alpine Baseline</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms,typography"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="/static/app-baseline.js"></script>
+    <style>
+      [x-cloak] {
+        display: none !important;
+      }
+    </style>
+    <script>
+      window.monitorUsers = {{ user_directory|tojson }};
+    </script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <div class="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      <header class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/40">
+        <p class="text-xs uppercase tracking-[0.4em] text-slate-400">Riverbend Manufacturing</p>
+        <h1 class="mt-2 text-3xl font-semibold text-white">Control Room Baseline</h1>
+        <p class="mt-2 max-w-3xl text-sm text-slate-300">
+          This baseline shows how the manufacturing monitor can be wired with plain Alpine stores, manual REST fetches,
+          and a lightweight SSE client. Each dashboard page keeps its own cached truth and refresh rules.
+        </p>
+      </header>
+
+      <main x-data="monitorShell()" x-cloak class="flex flex-1 flex-col gap-6">
+        <section class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/40">
+          <div class="grid gap-4 md:grid-cols-[2fr_1fr] md:items-center">
+            <div>
+              <h2 class="text-xl font-semibold text-white">Viewer</h2>
+              <p class="mt-1 text-sm text-slate-300">Switch between predefined personas to experience scope and line filtering.</p>
+              <dl class="mt-4 grid gap-2 text-sm text-slate-300">
+                <div class="flex gap-2">
+                  <dt class="text-slate-400">Name:</dt>
+                  <dd class="font-medium text-white" x-text="session.viewer?.name || 'Loading…'"></dd>
+                </div>
+                <div class="flex gap-2">
+                  <dt class="text-slate-400">Role:</dt>
+                  <dd class="text-white" x-text="session.viewer?.role || '—'"></dd>
+                </div>
+                <div class="flex gap-2">
+                  <dt class="text-slate-400">Scopes:</dt>
+                  <dd>
+                    <template x-if="session.viewerScopes().length === 0">
+                      <span class="text-slate-500">No dashboards</span>
+                    </template>
+                    <template x-for="scope in session.viewerScopes()" :key="scope">
+                      <span class="mr-2 inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-200" x-text="scope"></span>
+                    </template>
+                  </dd>
+                </div>
+                <div class="flex gap-2">
+                  <dt class="text-slate-400">Line access:</dt>
+                  <dd class="text-white" x-text="session.lineAccess.length ? session.lineAccess.join(', ') : 'No feeds'"></dd>
+                </div>
+              </dl>
+            </div>
+            <div>
+              <label class="text-xs font-medium uppercase tracking-widest text-slate-400">Control room persona</label>
+              <select
+                class="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:ring-emerald-400"
+                @change="selectUser($event)"
+              >
+                <template x-for="user in session.userDirectory" :key="user.id">
+                  <option :selected="user.id === session.selectedUserId" :value="user.id" x-text="user.name + ' — ' + user.role"></option>
+                </template>
+              </select>
+              <div class="mt-3 text-xs text-slate-400">
+                <span>Global SSE:</span>
+                <span :class="session.globalStatus === 'open' ? 'text-emerald-300' : 'text-amber-300'" x-text="session.globalStatus"></span>
+                <span class="ml-4">Line SSE:</span>
+                <span :class="session.lineStatus === 'open' ? 'text-emerald-300' : 'text-amber-300'" x-text="session.lineStatus"></span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <template x-if="session.error">
+          <div class="rounded-3xl border border-red-400/40 bg-red-500/10 p-4 text-sm text-red-200" x-text="session.error"></div>
+        </template>
+
+        <nav class="flex flex-wrap gap-2">
+          <template x-for="page in session.pages" :key="page.id">
+            <button
+              type="button"
+              class="rounded-full border px-4 py-2 text-sm font-semibold"
+              :class="{
+                'border-emerald-400 text-emerald-200 bg-emerald-500/10': session.currentPage === page.id,
+                'border-slate-700 text-slate-200 hover:border-slate-500 hover:bg-slate-900/70': session.currentPage !== page.id,
+                'opacity-40 cursor-not-allowed': !session.canAccess(page.id),
+              }"
+              :disabled="!session.canAccess(page.id)"
+              @click="selectPage(page.id)"
+              x-text="page.label"
+            ></button>
+          </template>
+        </nav>
+
+        <section x-show="session.currentPage === 'overview'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('overview')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">This persona does not have the overview scope.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('overview')">
+            <div class="space-y-6">
+              <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 shadow-lg shadow-slate-950/40">
+                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h2 class="text-xl font-semibold text-white">Production lines</h2>
+                    <p class="mt-1 text-sm text-slate-400">Select a line to focus the dedicated SSE feed.</p>
+                  </div>
+                  <p class="text-xs text-slate-400" x-text="overview.lines.length + ' active line(s)'"></p>
+                </div>
+                <div class="mt-4 grid gap-3 md:grid-cols-2">
+                  <template x-for="line in overview.lines" :key="line.id">
+                    <button
+                      type="button"
+                      class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4 text-left transition hover:border-emerald-400/60 hover:bg-slate-900/80"
+                      :class="overview.selectedLineId === line.id ? 'ring-2 ring-emerald-400/60' : ''"
+                      @click="selectLine(line.id)"
+                    >
+                      <div class="flex items-center justify-between gap-2">
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.2em] text-slate-500" x-text="line.id"></p>
+                          <p class="mt-1 text-base font-semibold text-white" x-text="line.name"></p>
+                        </div>
+                        <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="line.status === 'Running' ? 'bg-emerald-500/10 text-emerald-200' : 'bg-amber-500/10 text-amber-200'" x-text="line.status"></span>
+                      </div>
+                      <dl class="mt-3 grid grid-cols-2 gap-2 text-sm text-slate-300">
+                        <div>
+                          <dt class="text-slate-500">Active SKU</dt>
+                          <dd class="text-white" x-text="line.active_sku"></dd>
+                        </div>
+                        <div class="text-right">
+                          <dt class="text-slate-500">OEE</dt>
+                          <dd class="text-white" x-text="formatPercent(line.oee)"></dd>
+                        </div>
+                      </dl>
+                    </button>
+                  </template>
+                </div>
+                <template x-if="overview.lines.length === 0">
+                  <p class="mt-4 text-sm text-slate-400">No lines available for this persona.</p>
+                </template>
+              </div>
+
+              <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+                <div class="space-y-4">
+                  <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                    <h3 class="text-lg font-semibold text-white">Selected line</h3>
+                    <template x-if="!overview.selectedLine">
+                      <p class="mt-4 text-sm text-slate-400">Choose a production line to see the latest telemetry.</p>
+                    </template>
+                    <template x-if="overview.selectedLine">
+                      <div class="mt-4 space-y-3">
+                        <div class="flex items-center justify-between text-sm text-slate-300">
+                          <span class="font-semibold text-white" x-text="overview.selectedLine.name"></span>
+                          <span x-text="formatTime(overview.selectedLine.last_updated)"></span>
+                        </div>
+                        <p class="text-sm text-slate-400" x-text="overview.selectedLine.status_detail || 'Running to plan'"></p>
+                        <div class="grid gap-3 md:grid-cols-2 text-sm text-slate-300">
+                          <div>
+                            <p class="text-slate-500">Crew lead</p>
+                            <p class="text-white" x-text="overview.selectedLine.crew_lead"></p>
+                          </div>
+                          <div>
+                            <p class="text-slate-500">Shift goal</p>
+                            <p class="text-white" x-text="overview.selectedLine.line_goal_units + ' units'"></p>
+                          </div>
+                        </div>
+                        <div>
+                          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">SKUs</p>
+                          <ul class="mt-2 space-y-2 text-sm text-slate-200">
+                            <template x-for="sku in overview.selectedLine.skus" :key="sku.sku">
+                              <li class="rounded-xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                                <p class="font-semibold" x-text="sku.sku + ' · ' + sku.description"></p>
+                                <p class="text-xs text-slate-400">Shift output <span x-text="formatNumber(sku.shift_output)"></span>, yield <span x-text="formatPercent(sku.quality_yield)"></span></p>
+                              </li>
+                            </template>
+                          </ul>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <aside class="space-y-4">
+                  <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Global feed</h3>
+                    <ul class="mt-3 space-y-2 text-xs text-slate-300">
+                      <template x-if="overview.globalFeed.length === 0">
+                        <li class="text-slate-500">No broadcast updates yet.</li>
+                      </template>
+                      <template x-for="item in overview.globalFeed" :key="item.id">
+                        <li class="rounded-xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                          <p class="font-medium text-emerald-200" x-text="item.message"></p>
+                          <p class="mt-1 text-[11px] text-slate-500" x-text="formatTime(item.ts)"></p>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                  <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-4">
+                    <h3 class="text-sm font-semibold uppercase tracking-[0.2em] text-slate-400">Line feed</h3>
+                    <ul class="mt-3 space-y-2 text-xs text-slate-300">
+                      <template x-if="overview.lineUpdates.length === 0">
+                        <li class="text-slate-500">Select a line to begin streaming targeted updates.</li>
+                      </template>
+                      <template x-for="item in overview.lineUpdates" :key="item.id">
+                        <li class="rounded-xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                          <p class="font-medium text-sky-200" x-text="item.message"></p>
+                          <p class="mt-1 text-[11px] text-slate-500" x-text="formatTime(item.ts)"></p>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </aside>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <section x-show="session.currentPage === 'quality'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('quality')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">The selected viewer does not have the quality scope.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('quality')">
+            <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <div class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Recent defects</h2>
+                    <span class="text-xs text-slate-400" x-text="quality.defects.windowLabel()"></span>
+                  </div>
+                  <template x-if="quality.defects.items.length === 0">
+                    <p class="mt-4 text-sm text-slate-400">No defects logged for this persona.</p>
+                  </template>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-for="defect in quality.defects.items" :key="defect.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span x-text="defect.line_id"></span>
+                          <span x-text="formatTime(defect.detected_at)"></span>
+                        </div>
+                        <p class="mt-2 font-semibold text-white" x-text="defect.sku + ' · ' + defect.severity"></p>
+                        <p class="mt-1 text-slate-300" x-text="defect.description"></p>
+                        <p class="mt-2 text-xs text-emerald-200" x-text="defect.containment"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button
+                      type="button"
+                      class="rounded-lg border border-slate-700 px-3 py-1"
+                      :disabled="!quality.defects.hasPrev()"
+                      @click="changePage('recent_defects', -1)"
+                    >Prev</button>
+                    <button
+                      type="button"
+                      class="rounded-lg border border-slate-700 px-3 py-1"
+                      :disabled="!quality.defects.hasNext()"
+                      @click="changePage('recent_defects', 1)"
+                    >Next</button>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Quality audits</h2>
+                    <span class="text-xs text-slate-400" x-text="quality.audits.windowLabel()"></span>
+                  </div>
+                  <template x-if="quality.audits.items.length === 0">
+                    <p class="mt-4 text-sm text-slate-400">No audits logged.</p>
+                  </template>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-for="audit in quality.audits.items" :key="audit.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span x-text="audit.line_id || 'Plant'">Line</span>
+                          <span x-text="formatTime(audit.logged_at)"></span>
+                        </div>
+                        <p class="mt-2 font-semibold text-white" x-text="audit.sku"></p>
+                        <p class="mt-1 text-slate-300" x-text="audit.summary"></p>
+                        <p class="mt-2 text-xs uppercase tracking-[0.2em] text-emerald-200" x-text="audit.status"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!quality.audits.hasPrev()" @click="changePage('quality_audits', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!quality.audits.hasNext()" @click="changePage('quality_audits', 1)">Next</button>
+                  </div>
+                </div>
+              </div>
+              <aside class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                <h2 class="text-lg font-semibold text-white">Quality snapshot</h2>
+                <template x-if="!quality.summary">
+                  <p class="mt-4 text-sm text-slate-400">No summary available.</p>
+                </template>
+                <template x-if="quality.summary">
+                  <div class="mt-4 space-y-3 text-sm text-slate-200">
+                    <p>
+                      <span class="text-slate-400">First pass yield:</span>
+                      <span class="font-semibold text-white" x-text="formatPercent(quality.summary.first_pass_yield)"></span>
+                    </p>
+                    <p>
+                      <span class="text-slate-400">Containment actions:</span>
+                      <span class="font-semibold text-white" x-text="quality.summary.containment_actions"></span>
+                    </p>
+                    <p class="text-xs text-slate-500" x-text="'Updated ' + formatTime(quality.summary.last_updated)"></p>
+                    <div>
+                      <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Top issues</p>
+                      <ul class="mt-2 space-y-2 text-xs text-slate-300">
+                        <template x-for="item in quality.summary.top_defects" :key="item.sku + item.issue">
+                          <li class="rounded-xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                            <p class="font-semibold text-white" x-text="item.sku"></p>
+                            <p x-text="item.issue"></p>
+                            <p class="text-emerald-200" x-text="item.status"></p>
+                          </li>
+                        </template>
+                      </ul>
+                    </div>
+                  </div>
+                </template>
+              </aside>
+            </div>
+          </template>
+        </section>
+
+        <section x-show="session.currentPage === 'maintenance'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('maintenance')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">This persona cannot view maintenance queues.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('maintenance')">
+            <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-white">Active downtime events</h2>
+                  <span class="text-xs text-slate-400" x-text="maintenance.downtime.windowLabel()"></span>
+                </div>
+                <template x-if="maintenance.downtime.items.length === 0">
+                  <p class="mt-4 text-sm text-slate-400">No downtime has been recorded.</p>
+                </template>
+                <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                  <template x-for="event in maintenance.downtime.items" :key="event.id">
+                    <li
+                      class="cursor-pointer rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4"
+                      :class="maintenance.selectedDowntimeId === event.id ? 'ring-2 ring-emerald-400/60' : ''"
+                      @click="maintenanceSelectDowntime(event.id)"
+                    >
+                      <div class="flex items-center justify-between text-xs text-slate-400">
+                        <span x-text="event.line_id"></span>
+                        <span x-text="formatTime(event.started_at)"></span>
+                      </div>
+                      <p class="mt-2 font-semibold text-white" x-text="event.reason"></p>
+                      <p class="mt-1 text-slate-300" x-text="'Reported by ' + event.reported_by"></p>
+                    </li>
+                  </template>
+                </ul>
+                <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                  <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!maintenance.downtime.hasPrev()" @click="changePage('downtime_events', -1)">Prev</button>
+                  <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!maintenance.downtime.hasNext()" @click="changePage('downtime_events', 1)">Next</button>
+                </div>
+              </div>
+              <aside class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <h3 class="text-lg font-semibold text-white">Dispatch queue</h3>
+                  <template x-if="!maintenance.currentDowntime">
+                    <p class="mt-3 text-sm text-slate-400">Select an event to review assignment details.</p>
+                  </template>
+                  <template x-if="maintenance.currentDowntime">
+                    <div class="mt-3 space-y-2 text-sm text-slate-200">
+                      <p><span class="text-slate-400">Line:</span> <span class="font-semibold" x-text="maintenance.currentDowntime.line_id"></span></p>
+                      <p><span class="text-slate-400">Status:</span> <span class="font-semibold" x-text="maintenance.currentDowntime.status"></span></p>
+                      <p><span class="text-slate-400">Expected resolution:</span> <span x-text="formatTime(maintenance.currentDowntime.expected_resolution)"></span></p>
+                      <p><span class="text-slate-400">Note:</span> <span x-text="maintenance.currentDowntime.dispatch_note || 'Awaiting update'"></span></p>
+                    </div>
+                  </template>
+                </div>
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-semibold text-white">Maintenance backlog</h3>
+                    <span class="text-xs text-slate-400" x-text="maintenance.backlog.windowLabel()"></span>
+                  </div>
+                  <ul class="mt-3 space-y-3 text-xs text-slate-300">
+                    <template x-if="maintenance.backlog.items.length === 0">
+                      <li class="text-slate-500">No backlog items.</li>
+                    </template>
+                    <template x-for="item in maintenance.backlog.items" :key="item.id">
+                      <li class="rounded-xl border border-slate-800/70 bg-slate-950/60 px-3 py-2">
+                        <p class="font-semibold text-white" x-text="item.asset"></p>
+                        <p x-text="'Owner: ' + item.owner"></p>
+                        <p x-text="'Due ' + formatTime(item.due)"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!maintenance.backlog.hasPrev()" @click="changePage('maintenance_backlog', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!maintenance.backlog.hasNext()" @click="changePage('maintenance_backlog', 1)">Next</button>
+                  </div>
+                </div>
+              </aside>
+            </div>
+          </template>
+        </section>
+
+        <section x-show="session.currentPage === 'logistics'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('logistics')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">This persona cannot view inbound or outbound activity.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('logistics')">
+            <div class="grid gap-6 lg:grid-cols-2">
+              <div class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Inbound materials</h2>
+                    <span class="text-xs text-slate-400" x-text="logistics.supplyRuns.windowLabel()"></span>
+                  </div>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-if="logistics.supplyRuns.items.length === 0">
+                      <li class="text-slate-500">No inbound runs tracked.</li>
+                    </template>
+                    <template x-for="run in logistics.supplyRuns.items" :key="run.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <p class="font-semibold text-white" x-text="run.carrier + ' → ' + run.dock"></p>
+                        <p class="text-xs text-slate-400" x-text="formatTime(run.logged_at)"></p>
+                        <p class="mt-1 text-slate-300" x-text="run.material + ' · ' + formatNumber(run.quantity) + ' ' + run.uom"></p>
+                        <p class="text-xs text-emerald-200" x-text="run.notes || 'Checked in'"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.supplyRuns.hasPrev()" @click="changePage('supply_runs', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.supplyRuns.hasNext()" @click="changePage('supply_runs', 1)">Next</button>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Outbound shipments</h2>
+                    <span class="text-xs text-slate-400" x-text="logistics.shipments.windowLabel()"></span>
+                  </div>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-if="logistics.shipments.items.length === 0">
+                      <li class="text-slate-500">No shipments scheduled.</li>
+                    </template>
+                    <template x-for="shipment in logistics.shipments.items" :key="shipment.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span x-text="shipment.destination"></span>
+                          <span x-text="formatTime(shipment.logged_at)"></span>
+                        </div>
+                        <p class="mt-2 font-semibold text-white" x-text="shipment.reference"></p>
+                        <p class="text-slate-300" x-text="shipment.contents"></p>
+                        <p class="text-xs text-emerald-200" x-text="shipment.status + ' · Trailer ' + shipment.trailer"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.shipments.hasPrev()" @click="changePage('outbound_shipments', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.shipments.hasNext()" @click="changePage('outbound_shipments', 1)">Next</button>
+                  </div>
+                </div>
+              </div>
+              <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                <div class="flex items-center justify-between">
+                  <h2 class="text-lg font-semibold text-white">Inventory coverage</h2>
+                  <span class="text-xs text-slate-400" x-text="logistics.inventory.windowLabel()"></span>
+                </div>
+                <p class="mt-2 text-xs text-slate-400" x-text="logistics.catalog.length + ' materials in catalog'"></p>
+                <div class="mt-4 overflow-hidden rounded-2xl border border-slate-800/70">
+                  <table class="min-w-full divide-y divide-slate-800 text-sm">
+                    <thead class="bg-slate-950/60 text-xs uppercase tracking-[0.2em] text-slate-400">
+                      <tr>
+                        <th class="px-3 py-2 text-left">Material</th>
+                        <th class="px-3 py-2 text-right">On hand</th>
+                        <th class="px-3 py-2 text-right">Days cover</th>
+                        <th class="px-3 py-2 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-800/70">
+                      <template x-if="logistics.inventory.items.length === 0">
+                        <tr>
+                          <td colspan="4" class="px-3 py-4 text-center text-slate-500">No inventory positions.</td>
+                        </tr>
+                      </template>
+                      <template x-for="item in logistics.inventory.items" :key="item.id">
+                        <tr>
+                          <td class="px-3 py-3 font-semibold text-white" x-text="item.material"></td>
+                          <td class="px-3 py-3 text-right text-slate-300" x-text="formatNumber(item.on_hand) + ' ' + item.uom"></td>
+                          <td class="px-3 py-3 text-right text-slate-300" x-text="item.days_cover"></td>
+                          <td class="px-3 py-3 text-right">
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold" :class="item.status === 'Healthy' ? 'bg-emerald-500/10 text-emerald-200' : item.status === 'Watch' ? 'bg-amber-500/10 text-amber-200' : 'bg-red-500/10 text-red-200'" x-text="item.status"></span>
+                          </td>
+                        </tr>
+                      </template>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                  <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.inventory.hasPrev()" @click="changePage('inventory_positions', -1)">Prev</button>
+                  <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!logistics.inventory.hasNext()" @click="changePage('inventory_positions', 1)">Next</button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </section>
+
+        <section x-show="session.currentPage === 'safety'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('safety')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">This persona cannot view safety incidents or walks.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('safety')">
+            <div class="grid gap-6 lg:grid-cols-[2fr_1fr]">
+              <div class="space-y-6">
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Safety incidents</h2>
+                    <span class="text-xs text-slate-400" x-text="safety.incidents.windowLabel()"></span>
+                  </div>
+                  <template x-if="safety.incidents.items.length === 0">
+                    <p class="mt-4 text-sm text-slate-400">No incidents logged.</p>
+                  </template>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-for="incident in safety.incidents.items" :key="incident.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span x-text="incident.area"></span>
+                          <span x-text="formatTime(incident.logged_at)"></span>
+                        </div>
+                        <p class="mt-2 font-semibold text-white" x-text="incident.severity"></p>
+                        <p class="text-slate-300" x-text="incident.description"></p>
+                        <p class="text-xs text-emerald-200" x-text="incident.corrective_action"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!safety.incidents.hasPrev()" @click="changePage('safety_incidents', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!safety.incidents.hasNext()" @click="changePage('safety_incidents', 1)">Next</button>
+                  </div>
+                </div>
+
+                <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                  <div class="flex items-center justify-between">
+                    <h2 class="text-lg font-semibold text-white">Safety walks</h2>
+                    <span class="text-xs text-slate-400" x-text="safety.walks.windowLabel()"></span>
+                  </div>
+                  <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                    <template x-if="safety.walks.items.length === 0">
+                      <li class="text-slate-500">No safety walks recorded.</li>
+                    </template>
+                    <template x-for="walk in safety.walks.items" :key="walk.id">
+                      <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                          <span x-text="walk.observer"></span>
+                          <span x-text="formatTime(walk.logged_at)"></span>
+                        </div>
+                        <p class="mt-2 font-semibold text-white" x-text="walk.area"></p>
+                        <p class="text-slate-300" x-text="walk.notes"></p>
+                        <p class="text-xs text-emerald-200" x-text="walk.follow_up"></p>
+                      </li>
+                    </template>
+                  </ul>
+                  <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!safety.walks.hasPrev()" @click="changePage('safety_walks', -1)">Prev</button>
+                    <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!safety.walks.hasNext()" @click="changePage('safety_walks', 1)">Next</button>
+                  </div>
+                </div>
+              </div>
+              <aside class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+                <h2 class="text-lg font-semibold text-white">Training compliance</h2>
+                <template x-if="!safety.training">
+                  <p class="mt-3 text-sm text-slate-400">Training metrics unavailable.</p>
+                </template>
+                <template x-if="safety.training">
+                  <div class="mt-3 space-y-3 text-sm text-slate-200">
+                    <p><span class="text-slate-400">Lockout/tagout:</span> <span class="font-semibold text-white" x-text="formatPercent(safety.training.lockout_tagout)"></span></p>
+                    <p><span class="text-slate-400">PPE:</span> <span class="font-semibold text-white" x-text="formatPercent(safety.training.ppe)"></span></p>
+                    <p><span class="text-slate-400">Forklift:</span> <span class="font-semibold text-white" x-text="formatPercent(safety.training.forklift)"></span></p>
+                    <p><span class="text-slate-400">Audits due:</span> <span class="font-semibold text-white" x-text="safety.training.audits_due"></span></p>
+                    <p class="text-xs text-slate-500" x-text="'Updated ' + formatTime(safety.training.last_updated)"></p>
+                  </div>
+                </template>
+              </aside>
+            </div>
+          </template>
+        </section>
+
+        <section x-show="session.currentPage === 'handover'" class="space-y-6" x-transition>
+          <template x-if="!session.canAccess('handover')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6 text-sm text-slate-300">
+              <h2 class="text-lg font-semibold text-white">Access restricted</h2>
+              <p class="mt-2">This persona cannot view the shift log.</p>
+            </div>
+          </template>
+          <template x-if="session.canAccess('handover')">
+            <div class="rounded-3xl border border-slate-800/70 bg-slate-900/70 p-6">
+              <div class="flex items-center justify-between">
+                <h2 class="text-lg font-semibold text-white">Shift handover notes</h2>
+                <span class="text-xs text-slate-400" x-text="handover.notes.windowLabel()"></span>
+              </div>
+              <template x-if="handover.notes.items.length === 0">
+                <p class="mt-4 text-sm text-slate-400">No notes logged during this shift.</p>
+              </template>
+              <ul class="mt-4 space-y-3 text-sm text-slate-200">
+                <template x-for="note in handover.notes.items" :key="note.id">
+                  <li class="rounded-2xl border border-slate-800/70 bg-slate-950/60 p-4">
+                    <div class="flex items-center justify-between text-xs text-slate-400">
+                      <span x-text="'Shift ' + note.shift"></span>
+                      <span x-text="formatTime(note.logged_at)"></span>
+                    </div>
+                    <p class="mt-2 font-semibold text-white" x-text="note.focus"></p>
+                    <p class="text-slate-300" x-text="note.note"></p>
+                    <p class="text-xs uppercase tracking-[0.2em] text-slate-500" x-text="note.author"></p>
+                  </li>
+                </template>
+              </ul>
+              <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
+                <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!handover.notes.hasPrev()" @click="changePage('shift_notes', -1)">Prev</button>
+                <button type="button" class="rounded-lg border border-slate-700 px-3 py-1" :disabled="!handover.notes.hasNext()" @click="changePage('shift_notes', 1)">Next</button>
+              </div>
+            </div>
+          </template>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>
