@@ -34,6 +34,8 @@ pathspec==0.12.1
 pillow==10.4.0
 platformdirs==4.5.0
 playwright==1.45.0
+pngquant==3.0.3
+puremagic==1.30
 pycparser==2.23
 pyee==11.1.0
 Pygments==2.19.2
