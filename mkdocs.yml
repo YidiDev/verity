@@ -1,8 +1,8 @@
 site_name: Verity
 site_description: "Server-truth data layer for calm UI"
 site_url: https://example.com
-repo_url: https://github.com/verity/verity
-repo_name: verity/verity
+repo_url: https://github.com/YidiDev/verity
+repo_name: YidiDev/verity
 nav:
   - Home: index.md
   - Philosophy: philosophy.md
