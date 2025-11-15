@@ -1,0 +1,1509 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Telehealth Operations &amp; Triage Hub</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script defer src="{{ url_for('static', filename='js/telehealth_hub.js') }}"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <style>
+      [x-cloak] { display: none !important; }
+    </style>
+  </head>
+  <body class="bg-slate-950 text-slate-100 min-h-screen">
+    <div class="max-w-7xl mx-auto px-4 py-10" x-data="telehealthHub()" x-init="init()">
+      <header class="mb-10">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+          <div class="space-y-3 max-w-3xl">
+            <h1 class="text-3xl font-semibold tracking-tight">Telehealth Operations &amp; Triage Hub</h1>
+            <p class="text-slate-300 text-sm md:text-base">
+              Morning coordinators watch the pending telehealth queue, confirm which clinicians are free to grab a visit, and keep
+              remote providers briefed with the freshest vitals and handoff notes. The hub keeps the single source of truth on the
+              server while this console streams every change back to the team.
+            </p>
+            <p class="text-slate-400 text-xs md:text-sm">
+              Use the panels below to route patients, refresh vital signs after a nurse call, or drop a quick handoff before looping in a physician.
+            </p>
+          </div>
+          <div class="bg-slate-900/70 border border-slate-800 rounded-xl px-4 py-4 w-full max-w-sm space-y-4">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-slate-100">Session controls</p>
+              <span class="text-xs text-slate-500" x-text="new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })"></span>
+            </div>
+            <div class="space-y-2" x-cloak>
+              <label for="session-user" class="text-xs font-medium uppercase tracking-wide text-slate-400">Persona</label>
+              <select
+                id="session-user"
+                class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400 disabled:opacity-50"
+                :value="sessionUserId || ''"
+                @change="switchUser($event.target.value)"
+                :disabled="availableUsers.length === 0"
+              >
+                <option value="" disabled>Select persona</option>
+                <template x-for="user in availableUsers" :key="user.id">
+                  <option :value="user.id" x-text="user.name"></option>
+                </template>
+              </select>
+              <p class="text-xs text-slate-500" x-text="sessionUser?.title ?? ''"></p>
+              <p class="text-xs text-slate-500" x-text="sessionUserRoleSummary"></p>
+            </div>
+            <div class="border-t border-slate-800 pt-3 space-y-2">
+              <label class="text-xs font-medium uppercase tracking-wide text-slate-400">Coordinator on duty</label>
+            <input
+              type="text"
+              class="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400"
+              placeholder="Add your name"
+              :value="coordinator"
+              @input="updateCoordinator($event.target.value)"
+            />
+            <p class="text-xs text-slate-500">
+              Your name is stamped on vitals, escalations, and handoffs so the rest of the coverage pod knows who touched the chart last.
+            </p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <nav class="flex flex-wrap items-center gap-3 mb-6" aria-label="Telehealth hub views">
+        <template x-for="view in visibleViews()" :key="view.id">
+          <button
+            type="button"
+            class="px-4 py-2 text-sm rounded-full border transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/70"
+            :class="currentView === view.id ? 'bg-emerald-400/90 text-slate-950 border-emerald-300' : 'border-slate-700 text-slate-300 hover:border-slate-500'"
+            @click="setView(view.id)"
+            :aria-pressed="currentView === view.id"
+          >
+            <span x-text="view.label"></span>
+          </button>
+        </template>
+      </nav>
+
+      <template x-if="visibleViews().length === 0">
+        <p class="text-sm text-amber-200 bg-amber-400/10 border border-amber-400/30 rounded-lg px-4 py-3 mb-8">
+          This persona does not have any assigned consoles. Select a different persona to explore the hub.
+        </p>
+      </template>
+
+      <p
+        class="text-sm text-slate-400 mb-8"
+        x-text="viewDescriptions[currentView]"
+        x-show="canAccessView(currentView)"
+        x-cloak
+      ></p>
+
+      <div class="grid gap-6 lg:grid-cols-4" x-show="currentView === 'dashboard'" x-cloak>
+        <section class="lg:col-span-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl px-5 py-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Queue depth</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-100" x-text="queueTotal"></p>
+            <p class="text-xs text-slate-500 mt-2" x-text="metricsRefreshedLabel"></p>
+          </article>
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl px-5 py-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Escalated cases</p>
+            <p class="mt-2 text-2xl font-semibold text-amber-200" x-text="queueEscalatedCount"></p>
+            <p class="text-xs text-slate-500 mt-2">Flagged for coordinator follow up.</p>
+          </article>
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl px-5 py-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Touchpoints (4h)</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-100" x-text="touchpointsLast4h"></p>
+            <p class="text-xs text-slate-500 mt-2">Outbound calls, chats, and visits logged recently.</p>
+          </article>
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl px-5 py-4">
+            <p class="text-xs uppercase tracking-wide text-slate-400">Awaiting assignment</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-100" x-text="queueAwaitingAssignmentCount"></p>
+            <p class="text-xs text-slate-500 mt-2">Keep the queue balanced across pods.</p>
+          </article>
+        </section>
+
+        <div class="lg:col-span-4 grid gap-6 lg:grid-cols-3">
+          <section class="lg:col-span-1 space-y-4">
+            <div class="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl overflow-hidden">
+              <div class="px-5 py-4 border-b border-slate-800 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 class="text-lg font-semibold">Appointment queues</h2>
+                  <span class="block text-xs uppercase tracking-wide text-slate-400" x-text="lastQueueRefreshLabel"></span>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-emerald-400 transition"
+                  @click="openQueueEditor('create')"
+                  x-show="can('queue_manage')"
+                  x-cloak
+                >
+                  Add appointment
+                </button>
+              </div>
+              <div class="divide-y divide-slate-800">
+                <template x-if="loadingQueues">
+                  <div class="px-5 py-10 text-center text-slate-500 text-sm">Loading queue…</div>
+                </template>
+                <template x-if="!loadingQueues && queueEntries.length === 0">
+                  <div class="px-5 py-10 text-center text-slate-500 text-sm">No patients waiting. Celebrate the calm.</div>
+                </template>
+                <template x-for="item in queueEntries" :key="item.id">
+                  <button
+                    type="button"
+                    class="w-full px-5 py-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60 transition"
+                    :class="{ 'bg-slate-800': selectedCaseId === item.case_id, 'hover:bg-slate-800/70': selectedCaseId !== item.case_id }"
+                    @click="selectCase(item.case_id)"
+                  >
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="space-y-3">
+                        <div>
+                          <p class="text-base font-medium" x-text="item.patient"></p>
+                          <p class="text-sm text-slate-400" x-text="item.chief_complaint"></p>
+                        </div>
+                        <div class="flex flex-col gap-1 text-xs text-slate-400">
+                          <div class="flex items-center gap-3">
+                            <span class="inline-flex items-center gap-1">
+                              <span class="size-2 rounded-full" :class="priorityDot(item.priority)"></span>
+                              <span class="uppercase" x-text="item.priority"></span>
+                            </span>
+                            <span>Scheduled <span class="font-medium text-slate-200" x-text="item.scheduled_for"></span></span>
+                          </div>
+                          <span class="text-slate-300 font-medium" x-text="visitStatusLabel(item.visit_status)"></span>
+                          <span x-text="item.assigned_provider_name ? `Assigned: ${item.assigned_provider_name}` : 'Awaiting assignment'"></span>
+                          <span x-text="item.last_contacted_at ? `Last contact ${relativeTime(item.last_contacted_at)}` : 'No outreach logged yet'"></span>
+                        </div>
+                      </div>
+                      <div class="flex flex-col items-end gap-2">
+                        <span
+                          class="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border"
+                          :class="item.escalation_flag ? 'border-amber-400/80 text-amber-200 bg-amber-400/10' : 'border-slate-700 text-slate-400'"
+                        >
+                          <span class="inline-block size-2 rounded-full" :class="item.escalation_flag ? 'bg-amber-300 animate-pulse' : 'bg-slate-600'"></span>
+                          <span x-text="item.escalation_flag ? 'Escalated' : 'Routine'"></span>
+                        </span>
+                        <span class="text-xs text-slate-500" x-text="item.id"></span>
+                        <div class="flex items-center gap-2" x-show="can('queue_manage')" x-cloak>
+                          <button
+                            type="button"
+                            class="text-[0.7rem] uppercase tracking-wide text-emerald-300 hover:text-emerald-200"
+                            @click.stop="openQueueEditor('edit', item)"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            class="text-[0.7rem] uppercase tracking-wide text-rose-300 hover:text-rose-200"
+                            @click.stop="deleteQueueEntry(item.id)"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </template>
+              </div>
+              <div
+                class="px-5 py-3 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+                x-show="queuePagination.total > 0"
+              >
+                <span x-text="queuePageSummary"></span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToQueuePage(-1)"
+                    :disabled="!queuePagination.has_prev"
+                  >
+                    Previous
+                  </button>
+                  <span class="uppercase tracking-wide" x-text="`Page ${queuePagination.page || 1}`"></span>
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToQueuePage(1)"
+                    :disabled="!queuePagination.has_next"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              <div
+                class="px-5 py-4 border-t border-slate-800 bg-slate-950/60"
+                x-show="queueEditorOpen && can('queue_manage')"
+                x-cloak
+              >
+                <form @submit.prevent="submitQueueEditor">
+                  <fieldset :disabled="!can('queue_manage')" class="space-y-4 text-sm">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Patient name</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.patient" required />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Case ID</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.case_id" placeholder="Auto-generated if blank" />
+                    </label>
+                    <label class="flex flex-col gap-1 sm:col-span-2">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Chief complaint</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.chief_complaint" />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Priority</span>
+                      <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.priority">
+                        <option value="urgent">Urgent</option>
+                        <option value="high">High</option>
+                        <option value="routine">Routine</option>
+                      </select>
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Visit status</span>
+                      <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.visit_status">
+                        <template x-for="option in visitStatusOptions" :key="option.value">
+                          <option :value="option.value" x-text="option.label"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Scheduled for</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" placeholder="10:15" x-model="queueEditorForm.scheduled_for" />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Assigned provider</span>
+                      <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.assigned_provider_id">
+                        <option value="">Unassigned</option>
+                        <template x-for="provider in providerList" :key="provider.id">
+                          <option :value="provider.id" x-text="provider.name"></option>
+                        </template>
+                      </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500">
+                      <input type="checkbox" class="size-4 rounded border border-slate-600 bg-slate-900 text-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.escalation_flag" />
+                      Escalated
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Patient DOB</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" placeholder="1990-02-14" x-model="queueEditorForm.patient_dob" />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">MRN</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.patient_mrn" />
+                    </label>
+                    <label class="flex flex-col gap-1 sm:col-span-2">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Triage note</span>
+                      <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="queueEditorForm.triage_note"></textarea>
+                    </label>
+                    <label class="flex flex-col gap-1 sm:col-span-2">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Last contact timestamp</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" placeholder="Optional" x-model="queueEditorForm.last_contacted_at" />
+                    </label>
+                    <div class="flex items-center justify-end gap-3">
+                      <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeQueueEditor">Cancel</button>
+                      <button
+                        type="submit"
+                        class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-emerald-400 transition"
+                      >
+                        Save appointment
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
+              </div>
+            </div>
+
+            <div class="bg-slate-900/70 backdrop-blur border border-slate-800 rounded-xl">
+              <div class="px-5 py-4 border-b border-slate-800 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 class="text-lg font-semibold">Provider availability</h2>
+                  <span class="block text-xs uppercase tracking-wide text-slate-400" x-text="lastProviderRefreshLabel"></span>
+                </div>
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-md bg-sky-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-sky-400 transition"
+                  @click="openProviderEditor('create')"
+                  x-show="can('provider_manage')"
+                  x-cloak
+                >
+                  Add provider
+                </button>
+              </div>
+              <ul class="divide-y divide-slate-800">
+                <template x-if="loadingProviders">
+                  <li class="px-5 py-8 text-center text-slate-500 text-sm">Fetching coverage map…</li>
+                </template>
+                <template x-if="!loadingProviders && providerList.length === 0">
+                  <li class="px-5 py-8 text-center text-slate-500 text-sm">Waiting on shift roster…</li>
+                </template>
+                <template x-for="provider in providerList" :key="provider.id">
+                  <li class="px-5 py-4">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <p class="text-sm font-medium" x-text="provider.name"></p>
+                        <p class="text-xs text-slate-400" x-text="provider.specialty"></p>
+                        <p class="mt-2 text-sm text-slate-300" x-text="provider.availability"></p>
+                        <p class="mt-2 text-xs text-slate-400" x-text="provider.coverage_notes"></p>
+                        <div class="mt-3 text-xs text-slate-400 space-y-2">
+                          <p>
+                            <span class="font-semibold text-slate-200" x-text="provider.active_case_count"></span>
+                            <span x-text="provider.active_case_count === 1 ? ' active case' : ' active cases'"></span>
+                          </p>
+                          <ul class="space-y-1" x-show="Array.isArray(provider.active_cases) && provider.active_cases.length > 0">
+                            <template x-for="active in provider.active_cases" :key="active.case_id">
+                              <li class="flex items-center justify-between gap-3 border border-slate-800 rounded px-3 py-2 bg-slate-900/60">
+                                <span class="text-slate-200" x-text="active.patient"></span>
+                                <span class="text-slate-500" x-text="visitStatusLabel(active.visit_status)"></span>
+                              </li>
+                            </template>
+                          </ul>
+                        </div>
+                      </div>
+                      <div class="flex flex-col items-end gap-2 text-xs text-slate-400">
+                        <div class="flex items-center gap-2" x-show="can('provider_manage')" x-cloak>
+                          <button
+                            type="button"
+                            class="text-emerald-300 hover:text-emerald-200 uppercase tracking-wide"
+                            @click="openProviderEditor('edit', provider)"
+                            x-show="can('provider_manage')"
+                            x-cloak
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            class="text-rose-300 hover:text-rose-200 uppercase tracking-wide"
+                            @click="deleteProvider(provider.id)"
+                            x-show="can('provider_manage')"
+                            x-cloak
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <p class="font-semibold text-slate-200" x-text="statusLabel(provider.status)"></p>
+                        <p class="mt-1">Next slot <span class="text-slate-200" x-text="provider.next_slot"></span></p>
+                      </div>
+                    </div>
+                  </li>
+                </template>
+              </ul>
+              <div
+                class="px-5 py-3 border-t border-slate-800 bg-slate-950/60 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+                x-show="providerPagination.total > 0"
+              >
+                <span x-text="providerPageSummary"></span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-sky-400 hover:text-sky-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToProviderPage(-1)"
+                    :disabled="!providerPagination.has_prev"
+                  >
+                    Previous
+                  </button>
+                  <span class="uppercase tracking-wide" x-text="`Page ${providerPagination.page || 1}`"></span>
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-sky-400 hover:text-sky-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToProviderPage(1)"
+                    :disabled="!providerPagination.has_next"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              <div
+                class="px-5 py-4 border-t border-slate-800 bg-slate-950/60"
+                x-show="providerEditorOpen && can('provider_manage')"
+                x-cloak
+              >
+                <form @submit.prevent="submitProviderEditor">
+                  <fieldset :disabled="!can('provider_manage')" class="space-y-3 text-sm">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Name</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.name" required />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Specialty</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.specialty" />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Availability</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.availability" />
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Status</span>
+                      <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.status">
+                        <option value="available">Available</option>
+                        <option value="on_shift">On shift</option>
+                        <option value="in_consult">In consult</option>
+                      </select>
+                    </label>
+                    <label class="flex flex-col gap-1">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Next slot</span>
+                      <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.next_slot" placeholder="09:45" />
+                    </label>
+                    <label class="flex flex-col gap-1 sm:col-span-2">
+                      <span class="text-xs uppercase tracking-wide text-slate-500">Coverage notes</span>
+                      <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-sky-400 focus:ring-sky-400" x-model="providerEditorForm.coverage_notes"></textarea>
+                    </label>
+                  </div>
+                    <div class="flex items-center justify-end gap-3">
+                      <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeProviderEditor">Cancel</button>
+                      <button
+                        type="submit"
+                        class="inline-flex items-center justify-center rounded-md bg-sky-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-sky-400 transition"
+                      >
+                        Save provider
+                      </button>
+                    </div>
+                  </fieldset>
+                </form>
+              </div>
+            </div>
+          </section>
+
+          <section class="lg:col-span-2 space-y-4">
+            <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-6 min-h-[22rem] flex flex-col gap-6">
+              <template x-if="!hasSelectedCase">
+                <div class="text-slate-500 text-sm">Select a patient from the queue to review summary and chart preview.</div>
+              </template>
+
+              <template x-if="hasSelectedCase">
+                <div class="space-y-6">
+                  <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <h2 class="text-2xl font-semibold" x-text="selectedCase?.patient?.name"></h2>
+                      <p class="text-sm text-slate-400" x-text="caseDemographics"></p>
+                      <p class="mt-3 text-sm text-slate-300" x-text="selectedCase?.summary?.triage"></p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <label class="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          class="rounded border-slate-600 bg-slate-900 text-amber-400 focus:ring-amber-400"
+                          :checked="currentEscalation"
+                          @change="setEscalation($event.target.checked)"
+                          :disabled="!can('case_manage')"
+                        />
+                        Escalation flag
+                      </label>
+                      <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-slate-700 text-xs text-slate-300">
+                        <span class="size-2 rounded-full" :class="currentEscalation ? 'bg-amber-300 animate-pulse' : 'bg-emerald-400'"></span>
+                        <span x-text="currentEscalation ? 'Care team alerted' : 'Monitoring'"></span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-6 xl:grid-cols-3">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5 space-y-4">
+                      <header>
+                        <h3 class="font-semibold text-slate-100">Care team &amp; routing</h3>
+                        <p class="text-xs text-slate-500 mt-1">Keep remote providers looped in and visible.</p>
+                      </header>
+                      <div class="space-y-2 text-sm text-slate-300">
+                        <p>
+                          <span class="text-slate-500">Coordinator</span>
+                          <span class="ml-2 text-slate-200" x-text="selectedCase?.care_team?.coordinator ?? '—'"></span>
+                        </p>
+                        <p>
+                          <span class="text-slate-500">Remote nurse</span>
+                          <span class="ml-2 text-slate-200" x-text="selectedCase?.care_team?.remote_nurse ?? '—'"></span>
+                        </p>
+                        <p>
+                          <span class="text-slate-500">Support channel</span>
+                          <span class="ml-2 text-slate-200" x-text="selectedCase?.care_team?.support_channel ?? '—'"></span>
+                        </p>
+                        <p>
+                          <span class="text-slate-500">Assigned provider</span>
+                          <span class="ml-2 text-emerald-300" x-text="selectedCase?.care_team?.assigned_provider?.name ?? 'Awaiting assignment'"></span>
+                        </p>
+                      </div>
+                      <form
+                        class="space-y-3"
+                        @submit.prevent="assignProvider"
+                        :class="!can('case_manage') ? 'opacity-60' : ''"
+                      >
+                        <fieldset :disabled="!can('case_manage')" class="space-y-3">
+                          <label class="flex flex-col gap-1 text-xs uppercase tracking-wide text-slate-400">
+                            Assign provider
+                            <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" x-model="assignmentForm.provider_id">
+                              <option value="">Unassigned</option>
+                              <template x-for="provider in providerList" :key="provider.id">
+                                <option :value="provider.id" x-text="provider.name"></option>
+                              </template>
+                            </select>
+                          </label>
+                          <input type="text" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Routed by" x-model="assignmentForm.assigned_by" />
+                          <div class="flex items-center gap-2">
+                            <button type="submit" class="inline-flex justify-center items-center gap-2 rounded-md bg-emerald-500/90 text-slate-950 font-semibold px-4 py-2 text-sm hover:bg-emerald-400 transition">
+                              Update routing
+                            </button>
+                            <button type="button" class="text-xs text-slate-400 hover:text-slate-200" @click="clearAssignment">Clear</button>
+                          </div>
+                        </fieldset>
+                      </form>
+                      <p class="text-xs text-slate-500">Leaving the provider blank clears the assignment for this visit.</p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5 space-y-4">
+                      <header>
+                        <h3 class="font-semibold text-slate-100">Visit progress</h3>
+                        <p class="text-xs text-slate-500 mt-1">Track readiness before handing off to the clinician.</p>
+                      </header>
+                      <div class="space-y-2 text-sm text-slate-300">
+                        <p>
+                          Current status:
+                          <span class="ml-2 text-slate-100 font-medium" x-text="visitStatusLabel(selectedCase?.visit_status)"></span>
+                        </p>
+                        <p class="text-slate-400" x-text="selectedQueueLastContact"></p>
+                        <p class="text-slate-400" x-text="selectedCase?.care_team?.assigned_provider?.name ? `Provider ready: ${selectedCase.care_team.assigned_provider.name}` : 'No provider assigned yet'"></p>
+                      </div>
+                      <form
+                        class="space-y-3"
+                        @submit.prevent="updateVisitStatus"
+                        :class="!can('case_manage') ? 'opacity-60' : ''"
+                      >
+                        <fieldset :disabled="!can('case_manage')" class="space-y-3">
+                          <label class="flex flex-col gap-1 text-xs uppercase tracking-wide text-slate-400">
+                            Update visit status
+                            <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" x-model="statusForm.status">
+                              <template x-for="option in visitStatusOptions" :key="option.value">
+                                <option :value="option.value" x-text="option.label"></option>
+                              </template>
+                            </select>
+                          </label>
+                          <input type="text" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Updated by" x-model="statusForm.updated_by" />
+                          <button type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-emerald-500/90 text-slate-950 font-semibold py-2 text-sm hover:bg-emerald-400 transition">
+                            Save visit status
+                          </button>
+                        </fieldset>
+                      </form>
+                      <p class="text-xs text-slate-500">Statuses mirror how the visit is staged for downstream providers.</p>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5 space-y-4">
+                      <header class="flex items-start justify-between gap-4">
+                        <div>
+                          <h3 class="font-semibold text-slate-100">Outreach log</h3>
+                          <p class="text-xs text-slate-500 mt-1">Document nurse calls and patient touchpoints.</p>
+                        </div>
+                        <span class="text-xs text-slate-500" x-text="caseContactSummary"></span>
+                      </header>
+                      <div>
+                        <template x-if="contactLogPreview.length === 0">
+                          <p class="text-sm text-slate-500">No outreach recorded yet.</p>
+                        </template>
+                        <ul class="space-y-2" x-show="contactLogPreview.length > 0">
+                          <template x-for="entry in contactLogPreview" :key="entry.ts + entry.summary">
+                            <li class="border border-slate-800 rounded px-3 py-2 bg-slate-900/60">
+                              <div class="flex items-center justify-between text-xs text-slate-500">
+                                <span class="uppercase tracking-wide" x-text="entry.method"></span>
+                                <span x-text="relativeTime(entry.ts)"></span>
+                              </div>
+                              <p class="mt-1 text-sm text-slate-200" x-text="entry.summary"></p>
+                              <p class="text-xs text-slate-500" x-text="entry.contact ? `Contact: ${entry.contact}` : ''"></p>
+                              <p class="text-xs text-slate-500" x-text="entry.logged_by ? `Logged by ${entry.logged_by}` : ''"></p>
+                            </li>
+                          </template>
+                        </ul>
+                      </div>
+                      <form
+                        class="space-y-3"
+                        @submit.prevent="submitContactLog"
+                        :class="!can('case_manage') ? 'opacity-60' : ''"
+                      >
+                        <fieldset :disabled="!can('case_manage')" class="space-y-3">
+                          <div class="grid grid-cols-2 gap-3 text-xs uppercase tracking-wide text-slate-400">
+                            <label class="flex flex-col gap-1">
+                              Method
+                              <select class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" x-model="contactForm.method">
+                                <template x-for="method in contactMethods" :key="method">
+                                  <option :value="method" x-text="method"></option>
+                                </template>
+                              </select>
+                            </label>
+                            <label class="flex flex-col gap-1">
+                              Contact
+                              <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Patient, caregiver…" x-model="contactForm.contact" />
+                            </label>
+                          </div>
+                          <textarea rows="3" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Summary of the call or chat" x-model="contactForm.summary"></textarea>
+                          <input type="text" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Logged by" x-model="contactForm.logged_by" />
+                          <button type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-emerald-500/90 text-slate-950 font-semibold py-2 text-sm hover:bg-emerald-400 transition">
+                            Log outreach
+                          </button>
+                        </fieldset>
+                      </form>
+                      <p class="text-xs text-slate-500">Logged outreach timestamps update the queue for the rest of the pod.</p>
+                      <div
+                        class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+                        x-show="contactLogPreview.length > 0"
+                      >
+                        <div class="uppercase tracking-wide" x-text="caseContactSummary"></div>
+                        <div class="flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                            @click="goToContactPage(-1)"
+                            :disabled="!casePagination.contacts?.has_prev"
+                          >
+                            Previous
+                          </button>
+                          <span class="uppercase tracking-wide" x-text="`Page ${casePagination.contacts?.page || 1}`"></span>
+                          <button
+                            type="button"
+                            class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                            @click="goToContactPage(1)"
+                            :disabled="!casePagination.contacts?.has_next"
+                          >
+                            Next
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="grid gap-6 md:grid-cols-2">
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5">
+                      <header class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-100">Latest vitals</h3>
+                        <span class="text-xs text-slate-500" x-text="lastVitalsRefresh"></span>
+                      </header>
+                      <dl class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <dt class="text-slate-500">Blood pressure</dt>
+                          <dd class="text-slate-100 font-medium" x-text="selectedCase?.summary?.last_vitals?.bp ?? '—'"></dd>
+                        </div>
+                        <div>
+                          <dt class="text-slate-500">Heart rate</dt>
+                          <dd class="text-slate-100 font-medium" x-text="selectedCase?.summary?.last_vitals?.hr ?? '—'"></dd>
+                        </div>
+                        <div>
+                          <dt class="text-slate-500">SpO₂</dt>
+                          <dd class="text-slate-100 font-medium" x-text="selectedCase?.summary?.last_vitals?.spo2 ?? '—'"></dd>
+                        </div>
+                        <div>
+                          <dt class="text-slate-500">Updated</dt>
+                          <dd class="text-slate-100 font-medium" x-text="lastVitalsRefresh"></dd>
+                        </div>
+                      </dl>
+                      <form
+                        class="mt-6 space-y-3"
+                        @submit.prevent="submitVitals"
+                        :class="!can('case_manage') ? 'opacity-60' : ''"
+                      >
+                        <fieldset :disabled="!can('case_manage')" class="space-y-3">
+                          <p class="text-xs uppercase tracking-wide text-slate-400">Record new vitals</p>
+                          <div class="grid grid-cols-3 gap-3 text-sm">
+                            <label class="flex flex-col gap-1">
+                              <span class="text-slate-400">BP</span>
+                              <input type="text" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 focus:border-emerald-400 focus:ring-emerald-400" x-model="vitalsForm.bp" placeholder="120/80" />
+                            </label>
+                            <label class="flex flex-col gap-1">
+                              <span class="text-slate-400">HR</span>
+                              <input type="number" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 focus:border-emerald-400 focus:ring-emerald-400" x-model="vitalsForm.hr" placeholder="72" />
+                            </label>
+                            <label class="flex flex-col gap-1">
+                              <span class="text-slate-400">SpO₂</span>
+                              <input type="text" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 focus:border-emerald-400 focus:ring-emerald-400" x-model="vitalsForm.spo2" placeholder="98%" />
+                            </label>
+                          </div>
+                          <input type="text" class="w-full bg-slate-900 border border-slate-700 rounded px-2 py-1 text-sm focus:border-emerald-400 focus:ring-emerald-400" placeholder="Recorded by" x-model="vitalsForm.recorded_by" />
+                          <button type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-emerald-500/90 text-slate-950 font-semibold py-2 text-sm hover:bg-emerald-400 transition">
+                            Save vitals update
+                          </button>
+                        </fieldset>
+                      </form>
+                    </div>
+
+                    <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5 flex flex-col">
+                      <header class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-100">Chart preview</h3>
+                        <span class="text-xs text-slate-500">Focused context</span>
+                      </header>
+                      <div class="mt-4 space-y-4 text-sm text-slate-300">
+                        <div>
+                          <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Allergies</p>
+                          <template x-if="!(selectedCase?.chart_preview?.allergies?.length)">
+                            <p class="text-slate-500">No allergies recorded.</p>
+                          </template>
+                          <ul class="flex flex-wrap gap-2">
+                            <template x-for="allergy in selectedCase?.chart_preview?.allergies ?? []" :key="allergy">
+                              <li class="px-2 py-1 rounded-full border border-slate-700 bg-slate-900/80" x-text="allergy"></li>
+                            </template>
+                          </ul>
+                        </div>
+                        <div>
+                          <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Active orders</p>
+                          <template x-if="!(selectedCase?.chart_preview?.active_orders?.length)">
+                            <p class="text-slate-500">No active orders.</p>
+                          </template>
+                          <ul class="space-y-1">
+                            <template x-for="order in selectedCase?.chart_preview?.active_orders ?? []" :key="order">
+                              <li class="border border-slate-800 rounded px-3 py-2 bg-slate-900/60" x-text="order"></li>
+                            </template>
+                          </ul>
+                        </div>
+                        <div>
+                          <p class="text-xs uppercase tracking-wide text-slate-500 mb-1">Recent notes</p>
+                          <template x-if="!(selectedCase?.chart_preview?.recent_notes?.length)">
+                            <p class="text-slate-500">No notes yet.</p>
+                          </template>
+                          <ul class="space-y-2">
+                            <template x-for="note in selectedCase?.chart_preview?.recent_notes ?? []" :key="note.entered_at + note.author">
+                              <li class="border border-slate-800 rounded px-3 py-2 bg-slate-900/60">
+                                <p class="text-xs text-slate-400" x-text="note.entered_at"></p>
+                                <p class="text-sm text-slate-200 font-medium" x-text="note.author"></p>
+                                <p class="text-sm mt-1" x-text="note.text"></p>
+                              </li>
+                            </template>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+
+                    <form
+                      class="mt-6 space-y-3"
+                      @submit.prevent="submitHandoff"
+                      :class="!can('case_manage') ? 'opacity-60' : ''"
+                    >
+                      <fieldset :disabled="!can('case_manage')" class="space-y-3">
+                        <p class="text-xs uppercase tracking-wide text-slate-400">Handoff note</p>
+                        <textarea rows="3" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-sky-400 focus:ring-sky-400" placeholder="Vitals refreshed, Dr. Singh notified." x-model="handoff.note"></textarea>
+                        <input type="text" class="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm focus:border-sky-400 focus:ring-sky-400" placeholder="Signed by" x-model="handoff.author" />
+                        <button type="submit" class="w-full inline-flex justify-center items-center gap-2 rounded-md bg-sky-500/90 text-slate-950 font-semibold py-2 text-sm hover:bg-sky-400 transition">
+                          Add handoff note
+                        </button>
+                      </fieldset>
+                    </form>
+                  </div>
+
+                  <div class="bg-slate-950/70 border border-slate-800 rounded-xl p-5">
+                    <header class="flex items-center justify-between">
+                      <div>
+                        <h3 class="font-semibold text-slate-100">Case timeline</h3>
+                        <p class="text-xs text-slate-500">Everything routed through the hub, newest first.</p>
+                      </div>
+                      <span class="text-xs text-slate-500" x-text="caseTimelineSummary"></span>
+                    </header>
+                    <template x-if="caseTimelineCount === 0">
+                      <p class="mt-4 text-sm text-slate-500">Timeline entries will appear here as the team works the case.</p>
+                    </template>
+                    <ul class="mt-4 space-y-3 max-h-64 overflow-y-auto pr-2" x-show="caseTimelineCount > 0">
+                      <template x-for="entry in caseTimeline" :key="entry.ts + entry.summary">
+                        <li class="border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/60">
+                          <div class="flex items-center justify-between text-xs text-slate-500">
+                            <span class="uppercase tracking-wide" x-text="formatTimelineType(entry.type)"></span>
+                            <span x-text="relativeTime(entry.ts)"></span>
+                          </div>
+                          <p class="mt-2 text-sm text-slate-200" x-text="entry.summary"></p>
+                          <p class="text-xs text-slate-500" x-text="entry.entered_by ? `Logged by ${entry.entered_by}` : ''"></p>
+                          <template x-if="entry.details?.vitals">
+                            <p class="mt-1 text-xs text-emerald-300" x-text="formatVitals(entry.details.vitals)"></p>
+                          </template>
+                          <template x-if="entry.details?.note">
+                            <p class="mt-1 text-xs text-slate-400" x-text="entry.details.note"></p>
+                          </template>
+                          <template x-if="entry.details?.summary && !entry.details?.note">
+                            <p class="mt-1 text-xs text-slate-400" x-text="entry.details.summary"></p>
+                          </template>
+                        </li>
+                      </template>
+                    </ul>
+                    <div
+                      class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+                      x-show="caseTimelineCount > 0"
+                    >
+                      <div class="uppercase tracking-wide" x-text="caseTimelineSummary"></div>
+                      <div class="flex items-center gap-2">
+                        <button
+                          type="button"
+                          class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                          @click="goToTimelinePage(-1)"
+                          :disabled="!casePagination.timeline?.has_prev"
+                        >
+                          Previous
+                        </button>
+                        <span class="uppercase tracking-wide" x-text="`Page ${casePagination.timeline?.page || 1}`"></span>
+                        <button
+                          type="button"
+                          class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                          @click="goToTimelinePage(1)"
+                          :disabled="!casePagination.timeline?.has_next"
+                        >
+                          Next
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+
+            <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+              <header class="flex items-center justify-between">
+                <h3 class="font-semibold">Live activity</h3>
+                <p class="text-xs text-slate-500">Latest moves from the coverage pod</p>
+              </header>
+              <template x-if="activityLog.length === 0">
+                <p class="mt-4 text-sm text-slate-500">Activity will show here as soon as someone updates a case.</p>
+              </template>
+              <ul class="mt-4 space-y-3 max-h-60 overflow-y-auto pr-2">
+                <template x-for="event in activityLog" :key="event.id">
+                  <li class="border border-slate-800 rounded-lg px-4 py-3 bg-slate-950/70">
+                    <div class="flex items-center justify-between text-xs text-slate-500">
+                      <span class="uppercase tracking-wide" x-text="displayEventType(event.type)"></span>
+                      <span x-text="relativeTime(event.ts)"></span>
+                    </div>
+                    <p class="mt-2 text-sm text-slate-200" x-text="event.message"></p>
+                    <p class="mt-1 text-xs text-slate-500" x-text="event.actor ? `Handled by ${event.actor}` : ''"></p>
+                  </li>
+                </template>
+              </ul>
+              <div
+                class="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+                x-show="activityLog.length > 0"
+              >
+                <span x-text="activityPageSummary"></span>
+                <div class="flex items-center gap-2">
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToActivityPage(-1)"
+                    :disabled="!activityPagination.has_prev"
+                  >
+                    Previous
+                  </button>
+                  <span class="uppercase tracking-wide" x-text="`Page ${activityPagination.page || 1}`"></span>
+                  <button
+                    type="button"
+                    class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                    @click="goToActivityPage(1)"
+                    :disabled="!activityPagination.has_next"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+      <div x-show="currentView === 'coverage'" x-cloak class="space-y-6">
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+          <header class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-xl font-semibold text-slate-100">Coverage pods on shift</h2>
+              <p class="text-sm text-slate-400">Who's online, which channel they're watching, and how many cases they're holding.</p>
+              <span class="block text-xs text-slate-500" x-text="coverageRefreshedLabel"></span>
+            </div>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md bg-indigo-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-indigo-400 transition"
+              @click="openCoverageTeamEditor('create')"
+              x-show="can('coverage_manage')"
+              x-cloak
+            >
+              Add coverage pod
+            </button>
+          </header>
+          <template x-if="loadingCoverage">
+            <p class="mt-6 text-sm text-slate-500">Loading coverage board…</p>
+          </template>
+          <template x-if="!loadingCoverage">
+            <div class="mt-6 grid gap-4 lg:grid-cols-2">
+              <template x-for="team in coverageTeams" :key="team.id">
+                <article class="border border-slate-800 rounded-xl bg-slate-950/70 p-5 space-y-4">
+                  <div class="flex flex-col gap-2">
+                    <div class="flex items-center justify-between">
+                      <h3 class="text-lg font-semibold text-slate-100" x-text="team.name"></h3>
+                      <span class="text-xs text-slate-500" x-text="team.shift_window"></span>
+                    </div>
+                    <p class="text-xs uppercase tracking-wide text-slate-400" x-text="team.handoff_channel"></p>
+                    <p class="text-sm text-slate-300" x-text="team.coverage_notes"></p>
+                    <p class="text-xs text-slate-400">Lead: <span class="text-slate-200" x-text="team.primary_lead"></span></p>
+                    <p class="text-xs text-slate-400" x-text="team.support_roles?.length ? `Support: ${team.support_roles.join(', ')}` : ''"></p>
+                    <div class="flex items-center gap-3 text-xs" x-show="can('coverage_manage')" x-cloak>
+                      <button type="button" class="text-emerald-300 hover:text-emerald-200 uppercase tracking-wide" @click="openCoverageTeamEditor('edit', team)">Edit pod</button>
+                      <button type="button" class="text-rose-300 hover:text-rose-200 uppercase tracking-wide" @click="deleteCoverageTeam(team.id)">Remove pod</button>
+                    </div>
+                  </div>
+                  <div class="space-y-3">
+                    <h4 class="text-xs uppercase tracking-wide text-slate-500">Providers</h4>
+                    <template x-if="(team.providers ?? []).length === 0">
+                      <p class="text-sm text-slate-500">Waiting on assignments to roll in.</p>
+                    </template>
+                    <ul class="space-y-2">
+                      <template x-for="provider in team.providers ?? []" :key="provider.id">
+                        <li class="border border-slate-800 rounded-lg px-3 py-2 bg-slate-900/60">
+                          <div class="flex items-center justify-between text-sm text-slate-200">
+                            <span x-text="provider.name"></span>
+                            <span class="text-xs text-slate-400" x-text="statusLabel(provider.status)"></span>
+                          </div>
+                          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+                            <span><span class="text-slate-200 font-semibold" x-text="provider.active_case_count"></span> active</span>
+                            <span x-text="provider.availability"></span>
+                          </div>
+                          <template x-if="(provider.active_cases ?? []).length">
+                            <ul class="mt-2 space-y-1">
+                              <template x-for="caseItem in provider.active_cases" :key="caseItem.case_id">
+                                <li class="flex items-center justify-between gap-2 text-xs text-slate-400">
+                                  <span class="text-slate-200" x-text="caseItem.patient"></span>
+                                  <span x-text="visitStatusLabel(caseItem.visit_status)"></span>
+                                </li>
+                              </template>
+                            </ul>
+                          </template>
+                        </li>
+                      </template>
+                    </ul>
+                  </div>
+                </article>
+              </template>
+            </div>
+          </template>
+          <div
+            class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+            x-show="!loadingCoverage && (coveragePagination.teams?.total || 0) > 0"
+          >
+            <span x-text="coverageTeamsSummary"></span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-indigo-400 hover:text-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToCoverageTeamsPage(-1)"
+                :disabled="!coveragePagination.teams?.has_prev"
+              >
+                Previous
+              </button>
+              <span class="uppercase tracking-wide" x-text="`Page ${coveragePagination.teams?.page || 1}`"></span>
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-indigo-400 hover:text-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToCoverageTeamsPage(1)"
+                :disabled="!coveragePagination.teams?.has_next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <div
+            class="mt-4 border border-slate-800 rounded-xl bg-slate-950/60 p-5"
+            x-show="coverageTeamEditorOpen && can('coverage_manage')"
+            x-cloak
+          >
+            <form @submit.prevent="submitCoverageTeam()">
+              <fieldset :disabled="!can('coverage_manage')" class="space-y-3 text-sm">
+                <div class="grid gap-3 md:grid-cols-2">
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Pod name</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.name" required />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Shift window</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.shift_window" />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Handoff channel</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.handoff_channel" />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Primary lead</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.primary_lead" />
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Support roles (one per line)</span>
+                  <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.support_roles"></textarea>
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Provider IDs (comma separated)</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.provider_ids" placeholder="prv-1, prv-2" />
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Coverage notes</span>
+                  <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="coverageTeamForm.coverage_notes"></textarea>
+                </label>
+                </div>
+                <div class="flex items-center justify-end gap-3">
+                  <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeCoverageTeamEditor">Cancel</button>
+                  <button type="submit" class="inline-flex items-center justify-center rounded-md bg-indigo-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-indigo-400 transition">
+                    Save pod
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+        </section>
+
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+          <header class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-lg font-semibold text-slate-100">Quick contacts</h2>
+              <p class="text-sm text-slate-400">Escalate equipment issues or loop in specialty partners without leaving the console.</p>
+            </div>
+            <span class="text-xs text-slate-500" x-text="coverageContactsSummary"></span>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md bg-purple-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-purple-400 transition"
+              @click="openSupportContactEditor('create')"
+              x-show="can('coverage_manage')"
+              x-cloak
+            >
+              Add contact
+            </button>
+          </header>
+          <ul class="mt-4 grid gap-4 md:grid-cols-3">
+            <template x-for="contact in coverageSupportContacts" :key="contact.id || contact.name">
+              <li class="border border-slate-800 rounded-xl bg-slate-950/70 p-4">
+                <p class="text-sm font-semibold text-slate-100" x-text="contact.name"></p>
+                <p class="text-xs text-slate-400 mt-1" x-text="contact.channel"></p>
+                <p class="text-xs text-slate-500 mt-2" x-text="`Hours: ${contact.hours}`"></p>
+                <p class="text-sm text-slate-300 mt-3" x-text="contact.notes"></p>
+                <div class="mt-3 flex items-center gap-2 text-xs" x-show="can('coverage_manage')" x-cloak>
+                  <button type="button" class="text-emerald-300 hover:text-emerald-200 uppercase tracking-wide" @click="openSupportContactEditor('edit', contact)">Edit</button>
+                  <button type="button" class="text-rose-300 hover:text-rose-200 uppercase tracking-wide" @click="deleteSupportContact(contact.id)">Remove</button>
+                </div>
+              </li>
+            </template>
+          </ul>
+          <div
+            class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+            x-show="(coveragePagination.contacts?.total || 0) > 0"
+          >
+            <span x-text="coverageContactsSummary"></span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-purple-400 hover:text-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToCoverageContactsPage(-1)"
+                :disabled="!coveragePagination.contacts?.has_prev"
+              >
+                Previous
+              </button>
+              <span class="uppercase tracking-wide" x-text="`Page ${coveragePagination.contacts?.page || 1}`"></span>
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-purple-400 hover:text-purple-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToCoverageContactsPage(1)"
+                :disabled="!coveragePagination.contacts?.has_next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <div
+            class="mt-4 border border-slate-800 rounded-xl bg-slate-950/60 p-5"
+            x-show="supportContactEditorOpen && can('coverage_manage')"
+            x-cloak
+          >
+            <form @submit.prevent="submitSupportContact()">
+              <fieldset :disabled="!can('coverage_manage')" class="space-y-3 text-sm">
+                <div class="grid gap-3 md:grid-cols-2">
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Name</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-purple-400 focus:ring-purple-400" x-model="supportContactForm.name" required />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Channel</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-purple-400 focus:ring-purple-400" x-model="supportContactForm.channel" />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Hours</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-purple-400 focus:ring-purple-400" x-model="supportContactForm.hours" />
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Notes</span>
+                  <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-purple-400 focus:ring-purple-400" x-model="supportContactForm.notes"></textarea>
+                </label>
+                </div>
+                <div class="flex items-center justify-end gap-3">
+                  <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeSupportContactEditor">Cancel</button>
+                  <button type="submit" class="inline-flex items-center justify-center rounded-md bg-purple-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-purple-400 transition">
+                    Save contact
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+        </section>
+      </div>
+
+      <div x-show="currentView === 'briefing'" x-cloak class="space-y-6">
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+          <header class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="text-xl font-semibold text-slate-100">Shift watchlist</h2>
+              <p class="text-sm text-slate-400">Cases the morning coordinator should keep open on the side monitor.</p>
+            </div>
+            <div class="flex flex-col items-start md:items-end gap-1 text-xs text-slate-500">
+              <span x-text="briefRefreshedLabel"></span>
+              <span x-text="watchlistSummary"></span>
+            </div>
+          </header>
+          <template x-if="loadingBrief">
+            <p class="mt-6 text-sm text-slate-500">Compiling briefing…</p>
+          </template>
+          <template x-if="!loadingBrief">
+            <div class="mt-6 overflow-x-auto">
+              <table class="min-w-full text-sm text-left text-slate-300">
+                <thead class="text-xs uppercase tracking-wide text-slate-400">
+                  <tr>
+                    <th class="px-4 py-2">Patient</th>
+                    <th class="px-4 py-2">Priority</th>
+                    <th class="px-4 py-2">Status</th>
+                    <th class="px-4 py-2">Scheduled</th>
+                    <th class="px-4 py-2">Assigned</th>
+                    <th class="px-4 py-2">Why it's flagged</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-800">
+                  <template x-for="item in briefingWatchlist" :key="item.case_id">
+                    <tr>
+                      <td class="px-4 py-2 text-slate-100" x-text="item.patient"></td>
+                      <td class="px-4 py-2">
+                        <span class="inline-flex items-center gap-2 text-xs px-2 py-1 rounded-full border" :class="item.priority === 'urgent' ? 'border-rose-400/80 text-rose-200' : item.priority === 'high' ? 'border-amber-300/80 text-amber-200' : 'border-slate-700 text-slate-400'">
+                          <span class="inline-block size-2 rounded-full" :class="priorityDot(item.priority)"></span>
+                          <span class="uppercase" x-text="item.priority ?? '—'"></span>
+                        </span>
+                      </td>
+                      <td class="px-4 py-2" x-text="item.status"></td>
+                      <td class="px-4 py-2" x-text="item.scheduled_for ?? '—'"></td>
+                      <td class="px-4 py-2" x-text="item.assigned_provider_name ?? 'Unassigned'"></td>
+                      <td class="px-4 py-2">
+                        <ul class="list-disc list-inside space-y-1 text-xs text-slate-400">
+                          <template x-for="reason in item.reasons" :key="reason">
+                            <li x-text="reason"></li>
+                          </template>
+                        </ul>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+          </template>
+          <div
+            class="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-xs text-slate-400"
+            x-show="!loadingBrief && (briefingWatchlist.length > 0 || (briefPagination.watchlist?.total || 0) > 0)"
+          >
+            <span x-text="watchlistSummary"></span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToWatchlistPage(-1)"
+                :disabled="!briefPagination.watchlist?.has_prev"
+              >
+                Previous
+              </button>
+              <span class="uppercase tracking-wide" x-text="`Page ${briefPagination.watchlist?.page || 1}`"></span>
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToWatchlistPage(1)"
+                :disabled="!briefPagination.watchlist?.has_next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="grid gap-4 lg:grid-cols-2">
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold text-slate-100">Overnight handoff</h3>
+              <button
+                type="button"
+                class="inline-flex items-center justify-center rounded-md bg-indigo-500/80 text-slate-950 text-xs font-semibold px-3 py-1.5 hover:bg-indigo-400 transition"
+                @click="openIncidentEditor('create')"
+                x-show="can('brief_manage')"
+                x-cloak
+              >
+                Log incident
+              </button>
+            </div>
+            <ul class="space-y-3">
+              <template x-for="item in briefingOvernight" :key="item.id || item.ts + item.summary">
+                <li class="border border-slate-800 rounded-lg px-4 py-3 bg-slate-950/70">
+                  <div class="flex items-center justify-between text-xs text-slate-500">
+                    <span x-text="item.ts"></span>
+                    <span x-text="item.owner"></span>
+                  </div>
+                  <p class="mt-2 text-sm text-slate-200" x-text="item.summary"></p>
+                  <div class="mt-2 flex items-center gap-2 text-[0.7rem] uppercase tracking-wide" x-show="can('brief_manage')" x-cloak>
+                    <button type="button" class="text-emerald-300 hover:text-emerald-200" @click="openIncidentEditor('edit', item)">Edit</button>
+                    <button type="button" class="text-rose-300 hover:text-rose-200" @click="deleteIncident(item.id)">Remove</button>
+                  </div>
+                </li>
+              </template>
+            </ul>
+            <div
+              class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+              x-show="briefingOvernight.length > 0 || (briefPagination.overnight?.total || 0) > 0"
+            >
+              <span x-text="overnightSummary"></span>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="px-2 py-1 rounded border border-slate-700 hover:border-indigo-400 hover:text-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="goToOvernightPage(-1)"
+                  :disabled="!briefPagination.overnight?.has_prev"
+                >
+                  Previous
+                </button>
+                <span class="uppercase tracking-wide" x-text="`Page ${briefPagination.overnight?.page || 1}`"></span>
+                <button
+                  type="button"
+                  class="px-2 py-1 rounded border border-slate-700 hover:border-indigo-400 hover:text-indigo-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="goToOvernightPage(1)"
+                  :disabled="!briefPagination.overnight?.has_next"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            <div class="border border-slate-800 rounded-lg bg-slate-950/60 p-4" x-show="incidentEditorOpen && can('brief_manage')" x-cloak>
+              <form @submit.prevent="submitIncident()">
+                <fieldset :disabled="!can('brief_manage')" class="space-y-3 text-sm">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">Timestamp</span>
+                    <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="incidentForm.ts" placeholder="06:30" />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">Summary</span>
+                    <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="incidentForm.summary"></textarea>
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">Owner</span>
+                    <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-indigo-400 focus:ring-indigo-400" x-model="incidentForm.owner" />
+                  </label>
+                  <div class="flex items-center justify-end gap-3">
+                    <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeIncidentEditor">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md bg-indigo-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-indigo-400 transition">
+                      Save incident
+                    </button>
+                  </div>
+                </fieldset>
+              </form>
+            </div>
+          </article>
+          <article class="bg-slate-900/70 border border-slate-800 rounded-xl p-6 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-lg font-semibold text-slate-100">Staffing calls in flight</h3>
+              <button
+                type="button"
+                class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-1.5 hover:bg-emerald-400 transition"
+                @click="openStaffingEditor('create')"
+                x-show="can('brief_manage')"
+                x-cloak
+              >
+                Add staffing call
+              </button>
+            </div>
+            <ul class="space-y-3">
+              <template x-for="item in briefingStaffingCalls" :key="item.id || item.team + item.need">
+                <li class="border border-slate-800 rounded-lg px-4 py-3 bg-slate-950/70">
+                  <p class="text-sm font-semibold text-slate-100" x-text="item.team"></p>
+                  <p class="text-sm text-slate-300 mt-1" x-text="item.need"></p>
+                  <p class="text-xs text-slate-500 mt-2" x-text="`ETA ${item.eta}`"></p>
+                  <div class="mt-2 flex items-center gap-2 text-[0.7rem] uppercase tracking-wide" x-show="can('brief_manage')" x-cloak>
+                    <button type="button" class="text-emerald-300 hover:text-emerald-200" @click="openStaffingEditor('edit', item)">Edit</button>
+                    <button type="button" class="text-rose-300 hover:text-rose-200" @click="deleteStaffing(item.id)">Remove</button>
+                  </div>
+                </li>
+              </template>
+            </ul>
+            <div
+              class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between text-xs text-slate-400"
+              x-show="briefingStaffingCalls.length > 0 || (briefPagination.staffing?.total || 0) > 0"
+            >
+              <span x-text="staffingSummary"></span>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="goToStaffingPage(-1)"
+                  :disabled="!briefPagination.staffing?.has_prev"
+                >
+                  Previous
+                </button>
+                <span class="uppercase tracking-wide" x-text="`Page ${briefPagination.staffing?.page || 1}`"></span>
+                <button
+                  type="button"
+                  class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                  @click="goToStaffingPage(1)"
+                  :disabled="!briefPagination.staffing?.has_next"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+            <div class="border border-slate-800 rounded-lg bg-slate-950/60 p-4" x-show="staffingEditorOpen && can('brief_manage')" x-cloak>
+              <form @submit.prevent="submitStaffing()">
+                <fieldset :disabled="!can('brief_manage')" class="space-y-3 text-sm">
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">Team</span>
+                    <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="staffingForm.team" required />
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">Need</span>
+                    <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="staffingForm.need"></textarea>
+                  </label>
+                  <label class="flex flex-col gap-1">
+                    <span class="text-xs uppercase tracking-wide text-slate-500">ETA</span>
+                    <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="staffingForm.eta" />
+                  </label>
+                  <div class="flex items-center justify-end gap-3">
+                    <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closeStaffingEditor">Cancel</button>
+                    <button type="submit" class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-emerald-400 transition">
+                      Save staffing call
+                    </button>
+                  </div>
+                </fieldset>
+              </form>
+            </div>
+          </article>
+        </section>
+
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+          <h3 class="text-lg font-semibold text-slate-100">Status breakdown</h3>
+          <p class="text-sm text-slate-400">Quick glance at where visits sit this hour.</p>
+          <div class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <template x-for="status in operationsStatusBreakdown" :key="status.status">
+              <div class="border border-slate-800 rounded-lg px-4 py-3 bg-slate-950/70">
+                <p class="text-xs uppercase tracking-wide text-slate-500" x-text="status.label"></p>
+                <p class="mt-2 text-xl font-semibold text-slate-100" x-text="status.count"></p>
+              </div>
+            </template>
+          </div>
+        </section>
+      </div>
+
+      <div x-show="currentView === 'resources'" x-cloak class="space-y-6">
+        <section class="bg-slate-900/70 border border-slate-800 rounded-xl p-6">
+          <header class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 class="text-xl font-semibold text-slate-100">Clinical playbooks</h2>
+              <p class="text-sm text-slate-400">Reference protocols that coordinators pin to the virtual war room.</p>
+              <span class="block text-xs text-slate-500" x-text="resourcesRefreshedLabel"></span>
+            </div>
+            <span class="text-xs text-slate-500" x-text="playbookSummary"></span>
+            <button
+              type="button"
+              class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-emerald-400 transition"
+              @click="openPlaybookEditor('create')"
+              x-show="can('library_manage')"
+              x-cloak
+            >
+              Add playbook
+            </button>
+          </header>
+          <template x-if="loadingResources">
+            <p class="mt-6 text-sm text-slate-500">Fetching playbooks…</p>
+          </template>
+          <template x-if="!loadingResources">
+            <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <template x-for="playbook in playbookLibrary" :key="playbook.id">
+                <article class="border border-slate-800 rounded-xl bg-slate-950/70 p-5 space-y-3">
+                  <div>
+                    <h3 class="text-lg font-semibold text-slate-100" x-text="playbook.title"></h3>
+                    <p class="text-xs text-slate-500" x-text="`Updated ${playbook.updated_at} · ${playbook.owner}`"></p>
+                  </div>
+                  <ul class="space-y-2 text-sm text-slate-300">
+                    <template x-for="bullet in playbook.highlights" :key="bullet">
+                      <li class="border border-slate-800 rounded px-3 py-2 bg-slate-900/60" x-text="bullet"></li>
+                    </template>
+                  </ul>
+                  <div class="flex items-center justify-between text-xs">
+                    <button
+                      type="button"
+                      class="inline-flex items-center gap-2 font-semibold text-emerald-300 hover:text-emerald-200"
+                      @click="openPlaybookWorkspace(playbook)"
+                    >
+                      Open in workspace
+                      <span aria-hidden="true">→</span>
+                    </button>
+                    <div class="flex items-center gap-2 uppercase tracking-wide" x-show="can('library_manage')" x-cloak>
+                      <button type="button" class="text-sky-300 hover:text-sky-200" @click="openPlaybookEditor('edit', playbook)">Edit</button>
+                      <button type="button" class="text-rose-300 hover:text-rose-200" @click="deletePlaybook(playbook.id)">Remove</button>
+                    </div>
+                  </div>
+                </article>
+              </template>
+            </div>
+          </template>
+          <div
+            class="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between text-xs text-slate-400"
+            x-show="!loadingResources && (playbookLibrary.length > 0 || (playbookPagination.total || 0) > 0)"
+          >
+            <span x-text="playbookSummary"></span>
+            <div class="flex items-center gap-2">
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToPlaybookPage(-1)"
+                :disabled="!playbookPagination.has_prev"
+              >
+                Previous
+              </button>
+              <span class="uppercase tracking-wide" x-text="`Page ${playbookPagination.page || 1}`"></span>
+              <button
+                type="button"
+                class="px-2 py-1 rounded border border-slate-700 hover:border-emerald-400 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                @click="goToPlaybookPage(1)"
+                :disabled="!playbookPagination.has_next"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+          <div class="mt-6 border border-slate-800 rounded-xl bg-slate-950/60 p-5" x-show="playbookEditorOpen && can('library_manage')" x-cloak>
+            <form @submit.prevent="submitPlaybook()">
+              <fieldset :disabled="!can('library_manage')" class="space-y-3 text-sm">
+                <div class="grid gap-3 md:grid-cols-2">
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Title</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="playbookForm.title" required />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Owner</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="playbookForm.owner" />
+                </label>
+                <label class="flex flex-col gap-1">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Updated at</span>
+                  <input type="text" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="playbookForm.updated_at" placeholder="2024-02-14" />
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Highlights (one per line)</span>
+                  <textarea rows="4" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="playbookForm.highlights_text"></textarea>
+                </label>
+                <label class="flex flex-col gap-1 md:col-span-2">
+                  <span class="text-xs uppercase tracking-wide text-slate-500">Summary / new bullet</span>
+                  <textarea rows="3" class="bg-slate-900 border border-slate-700 rounded px-3 py-2 focus:border-emerald-400 focus:ring-emerald-400" x-model="playbookForm.summary" placeholder="Optional description to add as a highlight"></textarea>
+                </label>
+                </div>
+                <div class="flex items-center justify-end gap-3">
+                  <button type="button" class="text-xs uppercase tracking-wide text-slate-400 hover:text-slate-200" @click="closePlaybookEditor">Cancel</button>
+                  <button type="submit" class="inline-flex items-center justify-center rounded-md bg-emerald-500/80 text-slate-950 text-xs font-semibold px-3 py-2 hover:bg-emerald-400 transition">
+                    Save playbook
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+          </div>
+          <div
+            class="mt-4 border border-slate-800 rounded-xl bg-slate-950/40 p-5"
+            x-show="activePlaybook"
+            x-cloak
+            x-ref="playbookWorkspace"
+          >
+            <h3 class="text-sm font-semibold text-slate-100">Workspace preview</h3>
+            <p class="text-xs text-slate-500" x-text="activePlaybook ? `Owner: ${activePlaybook.owner} · Updated ${activePlaybook.updated_at}` : ''"></p>
+            <ul class="mt-3 space-y-2 text-sm text-slate-300">
+              <template x-for="bullet in activePlaybook?.highlights ?? []" :key="bullet">
+                <li class="border border-slate-800 rounded px-3 py-2 bg-slate-900/60" x-text="bullet"></li>
+              </template>
+            </ul>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    
+  </body>
+</html>

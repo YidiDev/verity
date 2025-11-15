@@ -1,0 +1,1024 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>POC 4 — Financial Crime Case Management</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        [x-cloak] {
+            display: none !important;
+        }
+    </style>
+
+    <script>
+        window.AppConfig = window.AppConfig || {};
+        window.AppConfig.currentUser = "{{ current_user }}";
+    </script>
+
+    <script src="{{ url_for('static', filename='app-baseline.js') }}" defer></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+</head>
+
+<body class="bg-slate-50 text-slate-900">
+    <main class="max-w-6xl mx-auto px-4 py-8 space-y-8" x-data>
+        <header class="space-y-2">
+            <p class="text-xs font-semibold uppercase tracking-wide text-indigo-600">POC Library / Part 4</p>
+            <h1 class="text-3xl font-bold">Financial Crime Case Management</h1>
+            <p class="text-sm text-slate-600 max-w-3xl">
+                Server-enforced status transitions, queue invalidation, and tailored facets show how the shared honesty contract
+                adapts to investigations. Alpine drives only the UI while Flask guards transitions and emits directives that fan
+                out across all filtered queues.
+            </p>
+        </header>
+
+        <nav class="bg-white border border-slate-200 rounded-xl shadow-sm px-4 py-3" x-data="{ tabs: [
+            { id: 'operations', label: 'Operations' },
+            { id: 'filings', label: 'Filings & SARs' },
+            { id: 'insights', label: 'Analytics' },
+            { id: 'watchlist', label: 'Team & Watchers' },
+        ] }">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap gap-2">
+                    <template x-for="tab in tabs" :key="tab.id">
+                        <button type="button" @click="$store.shell.set(tab.id)"
+                            :class="$store.shell.is(tab.id) ? 'bg-indigo-600 text-white shadow-sm border-transparent' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+                            class="px-3 py-1.5 text-sm font-medium border rounded-full transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-1"
+                            :aria-current="$store.shell.is(tab.id) ? 'page' : undefined"
+                            x-text="tab.label"></button>
+                    </template>
+                </div>
+                <button type="button" @click="
+                        if ($store.shell.is('operations')) { $dispatch('refresh-operations'); }
+                        if ($store.shell.is('filings')) { $dispatch('refresh-filings'); }
+                        if ($store.shell.is('insights')) { $dispatch('refresh-insights'); }
+                        if ($store.shell.is('watchlist')) { $dispatch('refresh-watchlist'); }
+                    "
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                        stroke-width="1.5" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M3.5 10a6.5 6.5 0 0 1 11.102-4.601m1.898 4.601a6.5 6.5 0 0 1-11.102 4.601m-.898-4.601H2m16 0h-1.5M6 3.5V2m0 16v-1.5" />
+                    </svg>
+                    <span>Refresh view</span>
+                </button>
+            </div>
+        </nav>
+
+        <section x-data="dashboardOverview()" class="space-y-4" x-show="$store.shell.is('operations')" x-cloak
+            @refresh-operations.window="refresh(true)">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Operations snapshot</p>
+                    <p class="text-sm text-slate-500">Live metrics refresh automatically across clients via directives.</p>
+                </div>
+                <button type="button" @click="refresh(true)"
+                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                        stroke-width="1.5" class="w-4 h-4">
+                        <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M3.5 10a6.5 6.5 0 0 1 11.102-4.601m1.898 4.601a6.5 6.5 0 0 1-11.102 4.601m-.898-4.601H2m16 0h-1.5M6 3.5V2m0 16v-1.5" />
+                    </svg>
+                    <span>Refresh metrics</span>
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Open investigations</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" x-text="openCases()"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Total cases: <span x-text="totalCases()"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Due in next 3 days</p>
+                    <p class="mt-2 text-2xl font-semibold text-amber-600" x-text="dueSoon()"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Overdue filings: <span x-text="overdue()"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Unassigned queue</p>
+                    <p class="mt-2 text-2xl font-semibold text-indigo-600" x-text="unassigned()"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Followers on watch list: <span x-text="activeWatchers()"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Last updated</p>
+                    <p class="mt-2 text-lg font-semibold text-slate-900" x-text="lastGenerated() || '—'"></p>
+                    <p class="mt-1 text-[11px] text-slate-400" x-text="isLoading() ? 'Refreshing…' : 'Synchronized across analysts'"></p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs text-slate-500">24h activity</p>
+                            <p class="text-lg font-semibold text-slate-900" x-text="transitions24h() + ' transitions'"></p>
+                        </div>
+                        <p class="text-sm font-medium text-emerald-600" x-text="notes24h() + ' notes'"></p>
+                    </div>
+                    <p class="text-xs text-slate-500">Aging backlog &gt; 7 days: <span class="font-semibold text-slate-700"
+                            x-text="agingBacklog()"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3 lg:col-span-2">
+                    <p class="text-xs text-slate-500">Regional distribution</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <template x-for="region in topRegions()" :key="region.region">
+                            <div class="border border-slate-200 rounded-lg p-3">
+                                <p class="text-sm font-semibold text-slate-800" x-text="region.label"></p>
+                                <p class="text-2xl font-semibold text-slate-900" x-text="region.count"></p>
+                                <p class="text-[11px] text-slate-400">Queue share</p>
+                            </div>
+                        </template>
+                        <template x-if="topRegions().length === 0">
+                            <p class="text-sm text-slate-500">No regions tracked yet.</p>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start" x-show="$store.shell.is('operations')" x-cloak>
+            <section x-data="casesPanel()" class="lg:col-span-2 space-y-4" @refresh-operations.window="reload()">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <h2 class="text-sm font-semibold text-slate-800">Queues</h2>
+                            <p class="text-xs text-slate-500">Directive fan-out keeps queue views in sync.</p>
+                        </div>
+                        <button type="button" @click="reload()"
+                            class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"
+                                class="w-4 h-4 text-slate-500">
+                                <path fill-rule="evenodd"
+                                    d="M4.707 4.293a1 1 0 010 1.414A6.002 6.002 0 0010 17a6 6 0 005.477-8.09l1.598-1.6a.75.75 0 00-1.06-1.06l-1.72 1.72a.75.75 0 001.06 1.06l.284-.284A4.5 4.5 0 1110 15.5a4.5 4.5 0 01-4.255-6.17.75.75 0 10-1.382-.552 6 6 0 00-.706 6.331 6 6 0 01-.362-8.08.998.998 0 01.707-.236z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            <span>Reload</span>
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2">
+                        <button type="button" @click="statusFilter = 'all'"
+                            :class="statusFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                            class="px-3 py-1.5 rounded-full text-xs font-medium">All</button>
+                        <template x-for="option in ['triage','needs_review','awaiting_docs','ready_for_sar','sar_filed','closed']"
+                            :key="option">
+                            <button type="button" @click="statusFilter = option"
+                                :class="statusFilter === option ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'"
+                                class="px-3 py-1.5 rounded-full text-xs font-medium" x-text="statusLabel(option)"></button>
+                        </template>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <label class="block">
+                            <span class="text-xs text-slate-600">Search account, customer, or summary</span>
+                            <input type="search" x-model="search"
+                                class="mt-1 w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                placeholder="e.g. shell" />
+                        </label>
+                        <label class="block">
+                            <span class="text-xs text-slate-600">Region</span>
+                            <select x-model="regionFilter"
+                                class="mt-1 w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="all">All regions</option>
+                                <option value="NA">North America</option>
+                                <option value="EMEA">EMEA</option>
+                                <option value="APAC">APAC</option>
+                                <option value="LATAM">LATAM</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-xs text-slate-600">Risk band</span>
+                            <select x-model="riskBand"
+                                class="mt-1 w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="all">All scores</option>
+                                <option value="low">0-40</option>
+                                <option value="medium">41-70</option>
+                                <option value="high">71+</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-xs text-slate-600">Sort field</span>
+                            <select x-model="sortField"
+                                class="mt-1 w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="updated_at">Updated</option>
+                                <option value="risk_score">Risk score</option>
+                                <option value="sar_due_date">SAR due date</option>
+                                <option value="customer_name">Customer name</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-xs text-slate-600">Direction</span>
+                            <select x-model="sortDir"
+                                class="mt-1 w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                <option value="desc">Descending</option>
+                                <option value="asc">Ascending</option>
+                            </select>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                    <table class="min-w-full divide-y divide-slate-200">
+                        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-medium">Account</th>
+                                <th class="px-4 py-3 text-left font-medium">Risk</th>
+                                <th class="px-4 py-3 text-left font-medium">Status</th>
+                                <th class="px-4 py-3 text-left font-medium">Assigned</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <template x-for="id in ids()" :key="id">
+                                <tr @click="select(id)" class="cursor-pointer"
+                                    :class="isSelected(id) ? 'bg-indigo-50/70' : 'hover:bg-slate-50'">
+                                    <td class="px-4 py-4 align-top">
+                                        <template x-if="!isRowSkeleton(id)">
+                                            <div class="space-y-1">
+                                                <p class="text-sm font-semibold text-slate-800" x-text="row(id).data.account_number"></p>
+                                                <p class="text-xs text-slate-500" x-text="row(id).data.customer_name"></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="isRowSkeleton(id)">
+                                            <div class="space-y-2 animate-pulse">
+                                                <div class="h-4 bg-slate-200 rounded"></div>
+                                                <div class="h-3 bg-slate-200 rounded w-2/3"></div>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-4 align-top">
+                                        <template x-if="!isRowSkeleton(id)">
+                                            <div class="space-y-1">
+                                                <span class="text-sm font-medium" x-text="row(id).data.risk_score"></span>
+                                                <p class="text-xs text-slate-500" x-text="regionLabel(row(id).data.region)"></p>
+                                                <p class="text-[11px] inline-flex px-2 py-0.5 rounded-full"
+                                                    :class="{
+                                                        'bg-red-100 text-red-700': row(id).data.risk_score >= 80,
+                                                        'bg-amber-100 text-amber-700': row(id).data.risk_score >= 60 && row(id).data.risk_score < 80,
+                                                        'bg-emerald-100 text-emerald-700': row(id).data.risk_score < 60
+                                                    }"
+                                                    x-text="riskBadge(row(id).data.risk_score)"></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="isRowSkeleton(id)">
+                                            <div class="space-y-2 animate-pulse">
+                                                <div class="h-4 bg-slate-200 rounded w-12"></div>
+                                                <div class="h-3 bg-slate-200 rounded w-16"></div>
+                                                <div class="h-3 bg-slate-200 rounded w-10"></div>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-4 align-top">
+                                        <template x-if="!isRowSkeleton(id)">
+                                            <div class="space-y-1">
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                                                    :class="{
+                                                        'bg-slate-900 text-white': row(id).data.status === 'triage',
+                                                        'bg-indigo-600 text-white': row(id).data.status === 'needs_review',
+                                                        'bg-sky-600 text-white': row(id).data.status === 'awaiting_docs',
+                                                        'bg-amber-500 text-white': row(id).data.status === 'ready_for_sar',
+                                                        'bg-emerald-600 text-white': row(id).data.status === 'sar_filed',
+                                                        'bg-slate-300 text-slate-800': row(id).data.status === 'closed'
+                                                    }"
+                                                    x-text="statusLabel(row(id).data.status)"></span>
+                                                <p class="text-xs text-slate-500">SAR due <span
+                                                        x-text="row(id).data.sar_due_date ? new Date(row(id).data.sar_due_date).toLocaleDateString() : '—'"></span></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="isRowSkeleton(id)">
+                                            <div class="space-y-2 animate-pulse">
+                                                <div class="h-5 bg-slate-200 rounded w-20"></div>
+                                                <div class="h-3 bg-slate-200 rounded w-24"></div>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-4 align-top">
+                                        <template x-if="!isRowSkeleton(id)">
+                                            <div class="space-y-1">
+                                                <p class="text-sm" x-text="row(id).data.assigned_to || 'Unassigned'"></p>
+                                                <p class="text-[11px] text-slate-400">Updated <span
+                                                        x-text="new Date(row(id).data.updated_at).toLocaleTimeString()"></span></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="isRowSkeleton(id)">
+                                            <div class="space-y-2 animate-pulse">
+                                                <div class="h-4 bg-slate-200 rounded w-16"></div>
+                                                <div class="h-3 bg-slate-200 rounded w-20"></div>
+                                            </div>
+                                        </template>
+                                    </td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                    <div class="p-6 text-sm text-slate-500" x-show="emptyState()" x-cloak>
+                        No cases match the current filters.
+                    </div>
+                </div>
+            </section>
+
+            <aside x-data="caseDetail()" class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 w-full"
+                @refresh-operations.window="refreshTimeline()" x-cloak>
+                <template x-if="!hasSelection()">
+                    <div class="text-sm text-slate-500 space-y-2">
+                        <p class="font-medium text-slate-700">Select a case</p>
+                        <p>Choose a row to review status transitions, assignment controls, and SAR deadlines.</p>
+                    </div>
+                </template>
+
+                <template x-if="hasSelection()">
+                    <div class="space-y-5">
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-xs uppercase text-slate-500">Case</p>
+                                <h3 class="text-lg font-semibold text-slate-900" x-text="item('expanded').data?.customer_name"></h3>
+                                <p class="text-sm text-slate-500" x-text="item('expanded').data?.account_number"></p>
+                            </div>
+                            <button type="button" @click="clearSelection()"
+                                class="text-xs text-slate-500 hover:text-slate-700">Close</button>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                                <p class="text-xs text-slate-500">Status</p>
+                                <p class="mt-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                                    :class="{
+                                        'bg-slate-900 text-white': item('simplified').data?.status === 'triage',
+                                        'bg-indigo-600 text-white': item('simplified').data?.status === 'needs_review',
+                                        'bg-sky-600 text-white': item('simplified').data?.status === 'awaiting_docs',
+                                        'bg-amber-500 text-white': item('simplified').data?.status === 'ready_for_sar',
+                                        'bg-emerald-600 text-white': item('simplified').data?.status === 'sar_filed',
+                                        'bg-slate-300 text-slate-800': item('simplified').data?.status === 'closed'
+                                    }"
+                                    x-text="statusLabel(item('simplified').data?.status)"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500">Region</p>
+                                <p class="mt-1" x-text="regionLabel(item('simplified').data?.region)"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500">Risk score</p>
+                                <p class="mt-1 text-base font-semibold" x-text="item('simplified').data?.risk_score"></p>
+                                <p class="text-[11px] text-slate-400" x-text="'Band: ' + riskBadge(item('simplified').data?.risk_score)"></p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-slate-500">SAR due date</p>
+                                <p class="mt-1" x-text="formatDate(item('simplified').data?.sar_due_date)"></p>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm space-y-2">
+                            <p class="text-xs uppercase text-slate-500">Summary</p>
+                            <p class="mt-1 text-slate-700" x-text="item('expanded', { silent: true }).data?.summary || '—'"></p>
+                            <template x-if="item('expanded').data?.last_transition_note">
+                                <p class="mt-2 text-xs text-slate-500">
+                                    Last note: <span x-text="item('expanded').data?.last_transition_note"></span>
+                                </p>
+                            </template>
+                        </div>
+
+                        <div class="grid grid-cols-1 gap-4">
+                            <form class="space-y-2" @submit="submitAssignment($event)">
+                                <div class="flex items-center justify-between">
+                                    <p class="text-xs font-semibold text-slate-600">Reviewer assignment</p>
+                                    <span class="text-[11px] text-slate-400"
+                                        x-text="item('simplified').data?.assigned_to ? 'Active reviewer' : 'Unassigned'"></span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" name="assigned_to" list="reviewer-options"
+                                        :value="item('simplified').data?.assigned_to || ''"
+                                        class="flex-1 rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="e.g. analyst.id" />
+                                    <button type="submit"
+                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-slate-900 text-white text-xs hover:bg-slate-800 disabled:opacity-50"
+                                        :disabled="assigning">
+                                        <svg x-show="assigning" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 animate-spin">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757L6.636 6.636m12.728 0l-2.121 2.121M8.757 15.243l-2.121 2.121" />
+                                        </svg>
+                                        <span x-text="assigning ? 'Saving…' : 'Assign'"></span>
+                                    </button>
+                                </div>
+                                <datalist id="reviewer-options">
+                                    <template x-for="member in rosterMembers()" :key="member.id">
+                                        <option :value="member.id" x-text="member.name + (member.title ? ' · ' + member.title : '')"></option>
+                                    </template>
+                                </datalist>
+                            </form>
+
+                            <div class="bg-white border border-slate-200 rounded-lg p-3 space-y-3">
+                                <div class="flex items-center justify-between">
+                                    <div>
+                                        <p class="text-xs text-slate-500">Watchers</p>
+                                        <p class="text-sm font-semibold text-slate-800" x-text="watchers().length + ' team members'"></p>
+                                    </div>
+                                    <button type="button" @click="toggleWatch()"
+                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100 disabled:opacity-50"
+                                        :disabled="watcherUpdating">
+                                        <svg x-show="watcherUpdating" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 animate-spin">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757L6.636 6.636m12.728 0l-2.121 2.121M8.757 15.243l-2.121 2.121" />
+                                        </svg>
+                                        <span x-text="isWatching() ? 'Unfollow case' : 'Follow case'"></span>
+                                    </button>
+                                </div>
+                                <ul class="space-y-2 max-h-40 overflow-y-auto pr-1">
+                                    <template x-for="watcher in watchers()" :key="watcher.id || watcher.email">
+                                        <li class="flex items-center justify-between text-sm">
+                                            <div>
+                                                <p class="font-medium text-slate-800" x-text="watcher.name || watcher.id"></p>
+                                                <p class="text-[11px] text-slate-400"
+                                                    x-text="[watcher.title, watcher.region].filter(Boolean).join(' · ') || '—'"></p>
+                                            </div>
+                                            <p class="text-[11px] text-slate-400" x-text="formatDate(watcher.since)"></p>
+                                        </li>
+                                    </template>
+                                    <template x-if="watchers().length === 0">
+                                        <li class="text-sm text-slate-500">No followers yet.</li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs font-semibold text-slate-600">Transition</p>
+                                <span class="text-[11px] text-slate-400">Server enforces allowed steps.</span>
+                            </div>
+                            <textarea x-model="transitionNote"
+                                class="w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                rows="2" placeholder="Optional note for the next reviewer"></textarea>
+                            <div class="flex flex-wrap gap-2">
+                                <template x-for="next in transitions()" :key="next">
+                                    <button type="button" @click="transitionTo(next)"
+                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium text-white disabled:opacity-50"
+                                        :class="{
+                                            'bg-indigo-600 hover:bg-indigo-700': next === 'needs_review',
+                                            'bg-sky-600 hover:bg-sky-700': next === 'awaiting_docs',
+                                            'bg-amber-500 hover:bg-amber-600': next === 'ready_for_sar',
+                                            'bg-emerald-600 hover:bg-emerald-700': next === 'sar_filed',
+                                            'bg-slate-600 hover:bg-slate-700': next === 'closed'
+                                        }"
+                                        :disabled="transitioning">
+                                        <svg x-show="transitioning" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 animate-spin">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757L6.636 6.636m12.728 0l-2.121 2.121M8.757 15.243l-2.121 2.121" />
+                                        </svg>
+                                        <span x-text="'Move to ' + statusLabel(next)"></span>
+                                    </button>
+                                </template>
+                                <template x-if="transitions().length === 0">
+                                    <p class="text-xs text-slate-500">No further transitions available.</p>
+                                </template>
+                            </div>
+                        </div>
+
+                        <div class="border border-dashed border-slate-300 rounded-lg p-4 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs font-semibold text-slate-600">Add case note</p>
+                                <span class="text-[11px] text-slate-400">Shared instantly with other analysts.</span>
+                            </div>
+                            <form class="space-y-2" @submit.prevent="submitNote()">
+                                <div class="flex flex-wrap gap-2">
+                                    <select x-model="noteCategory"
+                                        class="rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500">
+                                        <template x-for="option in noteCategories()" :key="option.value">
+                                            <option :value="option.value" x-text="option.label"></option>
+                                        </template>
+                                    </select>
+                                </div>
+                                <textarea x-model="noteBody"
+                                    class="w-full rounded border border-slate-300 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                                    rows="3" placeholder="Document outreach, escalations, or QA feedback"></textarea>
+                                <div class="flex justify-end">
+                                    <button type="submit"
+                                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded bg-indigo-600 text-white text-xs hover:bg-indigo-700 disabled:opacity-50"
+                                        :disabled="noteSubmitting || !(noteBody && noteBody.trim())">
+                                        <svg x-show="noteSubmitting" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+                                            fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4 animate-spin">
+                                            <path stroke-linecap="round" stroke-linejoin="round"
+                                                d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364 6.364l-2.121-2.121M8.757 8.757L6.636 6.636m12.728 0l-2.121 2.121M8.757 15.243l-2.121 2.121" />
+                                        </svg>
+                                        <span x-text="noteSubmitting ? 'Saving…' : 'Add note'"></span>
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div class="flex items-center justify-between">
+                                <p class="text-xs font-semibold text-slate-600">Timeline</p>
+                                <button type="button" @click="refreshTimeline()"
+                                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor"
+                                        stroke-width="1.5" class="w-4 h-4">
+                                        <path stroke-linecap="round" stroke-linejoin="round"
+                                            d="M3.5 10a6.5 6.5 0 0 1 11.102-4.601m1.898 4.601a6.5 6.5 0 0 1-11.102 4.601m-.898-4.601H2m16 0h-1.5M6 3.5V2m0 16v-1.5" />
+                                    </svg>
+                                    <span>Refresh</span>
+                                </button>
+                            </div>
+                            <div class="space-y-3 max-h-72 overflow-y-auto pr-1">
+                                <template x-if="timelineLoading()">
+                                    <div class="space-y-2 animate-pulse">
+                                        <div class="h-4 bg-slate-200 rounded w-32"></div>
+                                        <div class="h-3 bg-slate-200 rounded w-full"></div>
+                                        <div class="h-3 bg-slate-200 rounded w-3/4"></div>
+                                    </div>
+                                </template>
+                                <template x-for="event in timelineEvents()" :key="event.id">
+                                    <div class="border border-slate-200 rounded-lg p-3 bg-white flex gap-3">
+                                        <div class="mt-1 text-slate-500">
+                                            <template x-if="timelineIcon(event) === 'arrows'">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="1.5" class="w-5 h-5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M7 16l-4-4m0 0l4-4m-4 4h18M17 8l4 4m0 0l-4 4" />
+                                                </svg>
+                                            </template>
+                                            <template x-if="timelineIcon(event) === 'document'">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="1.5" class="w-5 h-5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M8 6h8m-8 4h8m-8 4h4m-8 4h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2z" />
+                                                </svg>
+                                            </template>
+                                            <template x-if="timelineIcon(event) === 'clock'">
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="1.5" class="w-5 h-5">
+                                                    <path stroke-linecap="round" stroke-linejoin="round"
+                                                        d="M12 6v6l4 2m4-2a8 8 0 1 1-16 0 8 8 0 0 1 16 0z" />
+                                                </svg>
+                                            </template>
+                                        </div>
+                                        <div class="flex-1 space-y-1">
+                                            <p class="text-sm font-semibold text-slate-900" x-text="timelineTitle(event)"></p>
+                                            <p class="text-[11px] text-slate-400" x-text="timelineMeta(event)"></p>
+                                            <p class="text-sm text-slate-700" x-text="timelineBody(event)"></p>
+                                            <template x-if="event.type === 'transition'">
+                                                <div class="flex flex-wrap gap-2 pt-1">
+                                                    <span class="px-2 py-0.5 rounded-full text-[11px] bg-slate-100 text-slate-600"
+                                                        x-text="statusLabel(event.from_status)"></span>
+                                                    <span class="px-2 py-0.5 rounded-full text-[11px] bg-indigo-100 text-indigo-700"
+                                                        x-text="statusLabel(event.to_status)"></span>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="!timelineLoading() && timelineEvents().length === 0">
+                                    <p class="text-sm text-slate-500">No timeline events recorded yet.</p>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </aside>
+        </div>
+
+        <section x-data="filingsAgenda()" x-show="$store.shell.is('filings')" x-cloak class="space-y-6"
+            @refresh-filings.window="refresh(true)">
+            <header class="space-y-1">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Filings pipeline</p>
+                <h2 class="text-xl font-semibold text-slate-800">SAR readiness and due date coverage</h2>
+                <p class="text-sm text-slate-600 max-w-3xl">Investigations without deadlines are flagged alongside upcoming
+                    filings so the duty officer can unblock assignments before regulators do.</p>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:col-span-2">
+                    <p class="text-xs text-slate-500">Overdue filings</p>
+                    <p class="mt-2 text-3xl font-semibold text-rose-600" x-text="summary().overdue || 0"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Due today: <span x-text="summary().due_today || 0"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:col-span-1">
+                    <p class="text-xs text-slate-500">Due this week</p>
+                    <p class="mt-2 text-2xl font-semibold text-amber-600" x-text="summary().due_week || 0"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Filed last 7d: <span x-text="summary().filed_last_week || 0"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:col-span-1">
+                    <p class="text-xs text-slate-500">Open with due dates</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" x-text="summary().open_with_due || 0"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Missing deadlines: <span x-text="summary().without_due || 0"></span></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 md:col-span-1">
+                    <p class="text-xs text-slate-500">Data freshness</p>
+                    <p class="mt-2 text-sm font-medium text-slate-700" x-text="isLoading() ? 'Refreshing…' : 'Synchronized'"></p>
+                    <p class="mt-1 text-[11px] text-slate-400">Last computed: <span
+                            x-text="data().generated_at ? formatDateDisplay(data().generated_at) : '—'"></span></p>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm">
+                <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-800">Upcoming SAR obligations</h3>
+                        <p class="text-xs text-slate-500">Sorted by due date with risk context and watcher coverage.</p>
+                    </div>
+                    <button type="button" @click="refresh(true)"
+                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                        <span>Force refresh</span>
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                                <th class="px-4 py-2 font-medium">Case</th>
+                                <th class="px-4 py-2 font-medium">Customer</th>
+                                <th class="px-4 py-2 font-medium">Status</th>
+                                <th class="px-4 py-2 font-medium">Due</th>
+                                <th class="px-4 py-2 font-medium">Assignee</th>
+                                <th class="px-4 py-2 font-medium">Watchers</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="item in upcoming()" :key="item.case_id">
+                                <tr class="border-t border-slate-100 hover:bg-slate-50">
+                                    <td class="px-4 py-3">
+                                        <div class="font-semibold text-slate-800" x-text="item.account_number"></div>
+                                        <p class="text-xs text-slate-500" x-text="item.summary"></p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-700" x-text="item.customer_name"></p>
+                                        <p class="text-xs text-slate-400" x-text="regionLabel(item.region)"></p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full"
+                                            :class="item.status === 'sar_filed' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-700'"
+                                            x-text="statusLabel(item.status)"></span>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <div class="inline-flex items-center gap-2 px-2 py-1 text-xs font-medium rounded-full"
+                                            :class="dueBadge(item)">
+                                            <span x-text="dueLabel(item)"></span>
+                                        </div>
+                                        <p class="text-[11px] text-slate-400 mt-1" x-text="formatDateDisplay(item.sar_due_date)"></p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm text-slate-700" x-text="assigneeLabel(item)"></p>
+                                        <p class="text-xs text-slate-400" x-text="item.last_transition_note || 'Awaiting workflow update'"></p>
+                                    </td>
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm font-medium text-slate-700" x-text="watchersLabel(item)"></p>
+                                        <p class="text-[11px] text-slate-400"
+                                            x-text="item.updated_at ? 'Updated ' + formatDateDisplay(item.updated_at) : '—'"></p>
+                                    </td>
+                                </tr>
+                            </template>
+                            <template x-if="upcoming().length === 0">
+                                <tr>
+                                    <td class="px-4 py-6 text-sm text-slate-500" colspan="6">No filings scheduled — assign due dates to surface the
+                                        next wave.</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-800">Weekly capacity</h3>
+                            <p class="text-xs text-slate-500">Counts include filed cases for historical context.</p>
+                        </div>
+                    </div>
+                    <template x-for="bucket in calendar()" :key="bucket.week_start">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm font-medium text-slate-700" x-text="calendarWindow(bucket)"></p>
+                                <p class="text-sm font-semibold text-slate-900" x-text="bucket.count"></p>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <template x-for="entry in calendarStatuses(bucket)" :key="entry.status">
+                                    <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                        <span x-text="entry.label"></span>
+                                        <span x-text="entry.count"></span>
+                                    </span>
+                                </template>
+                                <template x-if="calendarStatuses(bucket).length === 0">
+                                    <span class="text-xs text-slate-400">No filings tracked.</span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                    <template x-if="calendar().length === 0">
+                        <p class="text-sm text-slate-500">No upcoming due dates captured yet.</p>
+                    </template>
+                </div>
+
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-800">Recent SAR filings</h3>
+                            <p class="text-xs text-slate-500">Latest transitions captured directly from workflow directives.</p>
+                        </div>
+                    </div>
+                    <template x-for="filing in recentFilings()" :key="filing.case_id + '-' + filing.created_at">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-semibold text-slate-800" x-text="filing.account_number"></p>
+                                    <p class="text-xs text-slate-500" x-text="filing.customer_name"></p>
+                                </div>
+                                <span class="text-xs text-slate-400" x-text="formatDateDisplay(filing.created_at)"></span>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1" x-text="filing.note || 'Filed without additional commentary.'"></p>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                Submitted by <span class="font-medium" x-text="filing.actor && filing.actor.name ? filing.actor.name : filing.actor.id"></span>
+                                · <span x-text="regionLabel(filing.region)"></span>
+                                · Risk <span x-text="filing.risk_score"></span>
+                            </p>
+                        </div>
+                    </template>
+                    <template x-if="recentFilings().length === 0">
+                        <p class="text-sm text-slate-500">No filings recorded in the last week.</p>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+        <section x-data="analyticsPage()" x-show="$store.shell.is('insights')" x-cloak class="space-y-6"
+            @refresh-insights.window="refresh(true)">
+            <header class="space-y-1">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Program analytics</p>
+                <h2 class="text-xl font-semibold text-slate-800">Pipeline health, load distribution, and case velocity</h2>
+                <p class="text-sm text-slate-600 max-w-3xl">These analytics feed the operations committee and highlight where
+                    additional capacity or policy review may be needed.</p>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 lg:col-span-2">
+                    <p class="text-xs text-slate-500">Risk distribution</p>
+                    <div class="mt-3 space-y-3">
+                        <template x-for="band in riskBands()" :key="band.key">
+                            <div>
+                                <div class="flex items-center justify-between text-sm">
+                                    <span class="font-medium text-slate-700" x-text="band.label"></span>
+                                    <span class="text-slate-500" x-text="formatNumber(band.count)"></span>
+                                </div>
+                                <div class="w-full h-2 bg-slate-100 rounded-full mt-1 overflow-hidden">
+                                    <div class="h-full bg-indigo-500"
+                                        :style="{ width: totalCases() ? Math.min(100, (band.count / totalCases()) * 100) + '%' : '0%' }"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 lg:col-span-2">
+                    <p class="text-xs text-slate-500">Aging backlog</p>
+                    <div class="mt-3 space-y-3">
+                        <template x-for="bucket in agingBuckets()" :key="bucket.key">
+                            <div class="flex items-center justify-between">
+                                <div>
+                                    <p class="text-sm font-medium text-slate-700" x-text="bucket.label"></p>
+                                    <p class="text-[11px] text-slate-400" x-text="formatPercent(bucket.share, 1)"></p>
+                                </div>
+                                <p class="text-sm font-semibold text-slate-900" x-text="formatNumber(bucket.count)"></p>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 lg:col-span-2">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <p class="text-xs text-slate-500">Transition velocity (last 14 days)</p>
+                            <p class="text-sm text-slate-600">Directive fan-out keeps this chart synchronized as work progresses.</p>
+                        </div>
+                        <button type="button" @click="refresh(true)"
+                            class="text-xs font-medium text-indigo-600 hover:underline">Refresh data</button>
+                    </div>
+                    <div class="mt-4 space-y-2">
+                        <template x-for="entry in transitionSeries()" :key="entry.date">
+                            <div>
+                                <div class="flex items-center justify-between text-xs text-slate-500">
+                                    <span x-text="new Date(entry.date).toLocaleDateString()"></span>
+                                    <span class="font-semibold text-slate-700" x-text="entry.count"></span>
+                                </div>
+                                <div class="h-2 bg-slate-100 rounded-full overflow-hidden">
+                                    <div class="h-full bg-indigo-500"
+                                        :style="{ width: maxTransitionCount() ? Math.min(100, (entry.count / maxTransitionCount()) * 100) + '%' : '0%' }"></div>
+                                </div>
+                            </div>
+                        </template>
+                        <template x-if="transitionSeries().length === 0">
+                            <p class="text-sm text-slate-500">No transitions captured during this window.</p>
+                        </template>
+                    </div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <p class="text-xs text-slate-500">Notes activity (7 days)</p>
+                    <template x-for="item in noteActivity()" :key="item.category">
+                        <div class="flex items-center justify-between text-sm">
+                            <span class="text-slate-600" x-text="item.label"></span>
+                            <span class="font-semibold text-slate-800" x-text="formatNumber(item.count)"></span>
+                        </div>
+                    </template>
+                    <template x-if="noteActivity().length === 0">
+                        <p class="text-sm text-slate-500">No note activity logged for this period.</p>
+                    </template>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <p class="text-xs text-slate-500">Regional allocation</p>
+                    <template x-for="region in regionStatus()" :key="region.region">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2">
+                            <div class="flex items-center justify-between">
+                                <p class="text-sm font-medium text-slate-700" x-text="region.label"></p>
+                                <span class="text-xs text-slate-400" x-text="regionPercent(region)"></span>
+                            </div>
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                <template x-for="(count, status) in region.status_counts" :key="status">
+                                    <span class="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                        <span x-text="statusLabel(status)"></span>
+                                        <span x-text="count"></span>
+                                    </span>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <p class="text-xs text-slate-500">Assignment load</p>
+                    <template x-for="item in assignmentLoad()" :key="item.assignee && item.assignee.id">
+                        <div class="flex items-center justify-between border border-slate-100 rounded-lg px-3 py-2">
+                            <div>
+                                <p class="text-sm font-medium text-slate-700"
+                                    x-text="item.assignee && (item.assignee.name || item.assignee.id) || 'Unassigned'"></p>
+                                <p class="text-[11px] text-slate-400"
+                                    x-text="item.assignee && item.assignee.region ? REGION_LABELS[item.assignee.region] : 'No region'"></p>
+                            </div>
+                            <span class="text-sm font-semibold text-slate-900" x-text="formatNumber(item.count)"></span>
+                        </div>
+                    </template>
+                    <template x-if="assignmentLoad().length === 0">
+                        <p class="text-sm text-slate-500">No open cases assigned.</p>
+                    </template>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <p class="text-xs text-slate-500">High risk spotlight</p>
+                    <p class="text-xs text-slate-500" x-text="'Top ' + topRiskAccounts().length + ' accounts by score'"></p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <template x-for="caseItem in topRiskAccounts()" :key="caseItem.case_id">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2">
+                            <p class="text-sm font-semibold text-slate-800" x-text="caseItem.account_number"></p>
+                            <p class="text-xs text-slate-500" x-text="caseItem.customer_name"></p>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                Risk score <span class="font-semibold" x-text="caseItem.risk_score"></span>
+                                · <span x-text="statusLabel(caseItem.status)"></span>
+                                · <span x-text="caseItem.assigned_to && (caseItem.assigned_to.name || caseItem.assigned_to.id) || 'Unassigned'"></span>
+                            </p>
+                        </div>
+                    </template>
+                    <template x-if="topRiskAccounts().length === 0">
+                        <p class="text-sm text-slate-500">No high risk cases remain open.</p>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+        <section x-data="watchlistOverviewPage()" x-show="$store.shell.is('watchlist')" x-cloak class="space-y-6"
+            @refresh-watchlist.window="refresh(true)">
+            <header class="space-y-1">
+                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Collaboration controls</p>
+                <h2 class="text-xl font-semibold text-slate-800">Watcher coverage and unmonitored cases</h2>
+                <p class="text-sm text-slate-600 max-w-3xl">Quality leads rely on watchers to coordinate across shifts — use
+                    this view to close coverage gaps and celebrate proactive peers.</p>
+            </header>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Linked watch relationships</p>
+                    <p class="mt-2 text-3xl font-semibold text-indigo-600" x-text="formatNumber((coverage().total_links) || 0)"></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Unique watchers</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" x-text="coverage().unique_watchers || 0"></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Open cases covered</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" x-text="coverage().cases_with_watchers || 0"></p>
+                    <p class="mt-1 text-[11px] text-slate-400" x-text="percentCovered() + ' of active investigations'"></p>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+                    <p class="text-xs text-slate-500">Average watchers per case</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" x-text="averageWatchers()"></p>
+                </div>
+            </div>
+
+            <div class="bg-white border border-slate-200 rounded-xl shadow-sm">
+                <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-800">Watchers on duty</h3>
+                        <p class="text-xs text-slate-500">Pulls directly from watcher directives so roster updates reflect instantly.</p>
+                    </div>
+                    <button type="button" @click="refresh(true)"
+                        class="inline-flex items-center gap-2 px-3 py-1.5 rounded border border-slate-300 text-xs bg-white hover:bg-slate-100">
+                        <span>Resync coverage</span>
+                    </button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="min-w-full text-left text-sm">
+                        <thead class="bg-slate-50 text-xs uppercase text-slate-500">
+                            <tr>
+                                <th class="px-4 py-2 font-medium">Watcher</th>
+                                <th class="px-4 py-2 font-medium">Regions</th>
+                                <th class="px-4 py-2 font-medium">Open</th>
+                                <th class="px-4 py-2 font-medium">Total</th>
+                                <th class="px-4 py-2 font-medium">Highlighted cases</th>
+                                <th class="px-4 py-2 font-medium">Last activity</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <template x-for="watcher in watchers()" :key="watcher.id">
+                                <tr class="border-t border-slate-100 align-top hover:bg-slate-50">
+                                    <td class="px-4 py-3">
+                                        <p class="text-sm font-semibold text-slate-800" x-text="watcher.name || watcher.id"></p>
+                                        <p class="text-xs text-slate-400" x-text="watcher.title || 'Analyst'"></p>
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-slate-600" x-text="watcherRegions(watcher)"></td>
+                                    <td class="px-4 py-3 text-sm font-semibold text-slate-900" x-text="watcher.open_cases"></td>
+                                    <td class="px-4 py-3 text-sm text-slate-600" x-text="watcher.total_cases"></td>
+                                    <td class="px-4 py-3">
+                                        <ul class="space-y-1 text-xs text-slate-600">
+                                            <template x-for="caseEntry in watcherTopCases(watcher)" :key="caseEntry.case_id">
+                                                <li>
+                                                    <span class="font-semibold" x-text="caseEntry.account_number"></span>
+                                                    · <span x-text="statusLabel(caseEntry.status)"></span>
+                                                    · <span x-text="regionLabel(caseEntry.region)"></span>
+                                                </li>
+                                            </template>
+                                            <template x-if="watcherTopCases(watcher).length === 0">
+                                                <li>No active cases.</li>
+                                            </template>
+                                        </ul>
+                                    </td>
+                                    <td class="px-4 py-3 text-xs text-slate-500" x-text="watcherLastActivity(watcher)"></td>
+                                </tr>
+                            </template>
+                            <template x-if="watchers().length === 0">
+                                <tr>
+                                    <td class="px-4 py-6 text-sm text-slate-500" colspan="6">No watchers yet — add collaborators to cases to see
+                                        coverage.</td>
+                                </tr>
+                            </template>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3 lg:col-span-2">
+                    <p class="text-xs text-slate-500">Recently added watchers</p>
+                    <template x-for="link in recentLinks()" :key="link.case_id + '-' + link.created_at">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2 flex items-center justify-between">
+                            <div>
+                                <p class="text-sm font-semibold text-slate-800" x-text="link.watcher && (link.watcher.name || link.watcher.id)"></p>
+                                <p class="text-xs text-slate-500" x-text="link.account_number + ' • ' + link.customer_name"></p>
+                            </div>
+                            <span class="text-xs text-slate-400" x-text="formatDateDisplay(link.created_at)"></span>
+                        </div>
+                    </template>
+                    <template x-if="recentLinks().length === 0">
+                        <p class="text-sm text-slate-500">No watcher updates recorded recently.</p>
+                    </template>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-xl shadow-sm p-4 space-y-3">
+                    <p class="text-xs text-slate-500">Unwatched high risk cases</p>
+                    <template x-for="item in unwatchedCases()" :key="item.case_id">
+                        <div class="border border-slate-100 rounded-lg px-3 py-2">
+                            <p class="text-sm font-semibold text-slate-800" x-text="item.account_number"></p>
+                            <p class="text-xs text-slate-500" x-text="item.customer_name"></p>
+                            <p class="text-[11px] text-slate-400 mt-1">
+                                Risk score <span class="font-semibold" x-text="item.risk_score"></span>
+                                · <span x-text="regionLabel(item.region)"></span>
+                            </p>
+                        </div>
+                    </template>
+                    <template x-if="unwatchedCases().length === 0">
+                        <p class="text-sm text-slate-500">All high risk cases have watcher coverage.</p>
+                    </template>
+                </div>
+            </div>
+        </section>
+
+    </main>
+</body>
+
+</html>

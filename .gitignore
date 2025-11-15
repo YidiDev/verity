@@ -1,0 +1,8 @@
+# MkDocs build output
+site/
+
+# Virtual environments
+.venv/
+
+# Node modules (if adapters are rebuilt)
+node_modules/
