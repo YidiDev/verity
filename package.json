@@ -1,0 +1,30 @@
+{
+  "name": "verity",
+  "version": "0.2.1",
+  "description": "A data-first UI toolkit that keeps the server as the single source of truth",
+  "main": "verity/shared/static/lib/core.js",
+  "module": "verity/shared/static/lib/core.js",
+  "files": [
+    "verity/shared/static/**/*"
+  ],
+  "keywords": [
+    "ui",
+    "toolkit",
+    "data-first",
+    "server-sent-events",
+    "alpine",
+    "react",
+    "vue",
+    "svelte"
+  ],
+  "author": "YidiDev",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YidiDev/verity.git"
+  },
+  "homepage": "https://github.com/YidiDev/verity#readme",
+  "bugs": {
+    "url": "https://github.com/YidiDev/verity/issues"
+  }
+}
