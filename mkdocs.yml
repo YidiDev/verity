@@ -79,6 +79,7 @@ plugins:
       repository: YidiDev/Verity
       branch: main
   - git-authors
+  - privacy
 markdown_extensions:
   - abbr
   - admonition
