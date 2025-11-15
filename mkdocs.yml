@@ -82,6 +82,7 @@ plugins:
       branch: main
   - git-authors
   - privacy
+  - optimize
 markdown_extensions:
   - abbr
   - admonition
