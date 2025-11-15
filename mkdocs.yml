@@ -165,5 +165,7 @@ extra:
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/YidiDev
+    - icon: fontawesome/solid/paper-plane
+      link: mailto:yididev@gmail.com
 
 edit_uri: edit/main/docs/
