@@ -15,7 +15,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install minification tools
+        run: npm install -g terser clean-css-cli
+
+      - name: Minify JavaScript files
+        run: |
+          terser verity/shared/static/lib/core.js -o verity/shared/static/lib/core.min.js
+          terser verity/shared/static/adapters/alpine.js -o verity/shared/static/adapters/alpine.min.js
+          terser verity/shared/static/adapters/react.js -o verity/shared/static/adapters/react.min.js
+          terser verity/shared/static/adapters/svelte.js -o verity/shared/static/adapters/svelte.min.js
+          terser verity/shared/static/adapters/vue.js -o verity/shared/static/adapters/vue.min.js
+          terser verity/shared/static/devtools/devtools.js -o verity/shared/static/devtools/devtools.min.js
+
+      - name: Minify CSS files
+        run: |
+          cleancss verity/shared/static/devtools/devtools.css -o verity/shared/static/devtools/devtools.min.css
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           generate_release_notes: true
+          files: |
+            verity/shared/static/lib/core.min.js
+            verity/shared/static/adapters/alpine.min.js
+            verity/shared/static/adapters/react.min.js
+            verity/shared/static/adapters/svelte.min.js
+            verity/shared/static/adapters/vue.min.js
+            verity/shared/static/devtools/devtools.min.js
+            verity/shared/static/devtools/devtools.min.css
