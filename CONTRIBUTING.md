@@ -1,4 +1,4 @@
-# Contributing to Verity v1
+# Contributing to Verity
 
 Thanks for your interest in improving Verity! This document outlines the process for reporting
 issues, proposing features, and submitting pull requests.

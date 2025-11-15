@@ -13,7 +13,7 @@ logic lightweight by handling caching, fan-out, and directive processing for you
 - **Framework adapters**: Use Alpine, React, Vue, or Svelte with the same semantics.
 - **Diagnostics**: Devtools ship with lifecycle tracing, directive logs, and cache inspection.
 
-## What's in This Release?
+## What's Included?
 
 - A Flask blueprint that exposes the shared static assets.
 - A framework-agnostic JavaScript core that enforces Verity's invariants.
