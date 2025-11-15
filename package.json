@@ -1,6 +1,6 @@
 {
   "name": "verity-dl",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "A data-first UI toolkit that keeps the server as the single source of truth",
   "main": "verity/shared/static/lib/core.js",
   "module": "verity/shared/static/lib/core.js",
