@@ -108,7 +108,7 @@ extra:
     deprecated: Deprecated
   analytics:
     provider: google
-    property: !ENV GOOGLE_ANALYTICS_KEY
+    property: G-E3T2VSPJTZ
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/YidiDev
