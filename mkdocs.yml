@@ -78,6 +78,7 @@ plugins:
   - git-committers:
       repository: YidiDev/Verity
       branch: main
+  - git-authors
 markdown_extensions:
   - abbr
   - admonition
