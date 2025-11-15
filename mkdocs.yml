@@ -48,6 +48,8 @@ theme:
     - search.suggest
     - toc.follow
     # - toc.integrate
+  icon:
+    repo: fontawesome/brands/git-alt
   palette:
     - media: "(prefers-color-scheme)"
       toggle:
