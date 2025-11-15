@@ -85,6 +85,7 @@ plugins:
   - optimize
   - offline
   - blog
+  - social
 markdown_extensions:
   - abbr
   - admonition
