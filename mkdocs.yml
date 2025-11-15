@@ -75,6 +75,9 @@ plugins:
   - search
   - git-revision-date-localized:
       enable_creation_date: true
+  - git-committers:
+      repository: YidiDev/Verity
+      branch: main
 markdown_extensions:
   - abbr
   - admonition
