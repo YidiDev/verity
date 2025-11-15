@@ -145,6 +145,7 @@ extra:
   status:
     new: Recently added
     deprecated: Deprecated
+  generator: false
   analytics:
     provider: google
     property: G-E3T2VSPJTZ
