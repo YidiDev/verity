@@ -48,6 +48,7 @@ theme:
     - search.suggest
     - toc.follow
     # - toc.integrate
+    - header.autohide
   icon:
     repo: fontawesome/brands/git-alt
   palette:
