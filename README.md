@@ -1,11 +1,10 @@
-# Verity v1 Release
+# Verity
 
 Verity is a data-first UI toolkit that keeps the server as the single source of truth.
 Instead of guessing about state, Verity waits for authoritative answers from the backend
 and reflects them across every connected client through server-sent directives.
 
-This `v1_release` bundle packages the Part 4 architecture from the Verity proof of concept
-into a standalone repo-ready layout:
+Verity provides a data-first UI toolkit with the following structure:
 
 - **`verity/`** — the core Flask helpers, JavaScript data layer, and multi-framework adapters.
 - **`verity/examples/`** — production-scale demos for Alpine.js, React, and Vue along with
@@ -69,16 +68,12 @@ site that accompanies this release.
 ## Repository Layout
 
 ```text
-v1_release/
-├─ verity/
-│  ├─ shared/            # Static assets (core library, adapters, devtools)
-│  └─ examples/          # Full-stack reference applications
-├─ docs/                 # MkDocs content (guides, reference, examples)
-├─ mkdocs.yml            # MkDocs configuration
-├─ CONTRIBUTING.md       # Contribution guide
-├─ LICENSE               # MIT License
-└─ requirements.txt      # Runtime dependencies for examples and docs
+verity/
+├─ shared/            # Static assets (core library, adapters, devtools)
+└─ examples/          # Full-stack reference applications
+docs/                 # MkDocs content (guides, reference, examples)
+mkdocs.yml            # MkDocs configuration
+CONTRIBUTING.md       # Contribution guide
+LICENSE               # MIT License
+requirements.txt      # Runtime dependencies for examples and docs
 ```
-
-This folder is ready to be promoted to its own repository. Update `mkdocs.yml` and the
-GitHub Action with your repository coordinates before enabling GitHub Pages.
