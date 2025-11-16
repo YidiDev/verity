@@ -47,13 +47,12 @@ jobs:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com/'
 
-       - run: npm config set registry https://npm.pkg.github.com/
+      - run: npm config set registry https://npm.pkg.github.com/
 
-       - run: npm pkg set name "@YidiDev/verity-dl"
+      - run: npm pkg set name "@YidiDev/verity-dl"
 
-       - run: npm publish
-
-       - run: npm pkg set name "verity-dl"
+      - run: npm publish
+      - run: npm pkg set name "verity-dl"
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
