@@ -1,6 +1,8 @@
 # Verity
 
-Verity is a data-first UI toolkit that keeps the server as the single source of truth.
+[![npm version](https://badge.fury.io/js/verity-dl.svg)](https://www.npmjs.com/package/verity-dl)
+
+Verity is a framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth.
 Instead of guessing about state, Verity waits for authoritative answers from the backend
 and reflects them across every connected client through server-sent directives.
 
