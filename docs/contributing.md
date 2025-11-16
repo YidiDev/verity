@@ -1,6 +1,6 @@
 # Contributing
 
-See [the repository contribution guide](https://github.com/verity/verity/blob/main/CONTRIBUTING.md) for detailed instructions. Highlights:
+See [the repository contribution guide](https://github.com/YidiDev/verity/blob/main/CONTRIBUTING.md) for detailed instructions. Highlights:
 
 - Open an issue before large changes.
 - Keep pull requests focused and well-documented.

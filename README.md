@@ -152,7 +152,7 @@ Add the visual debugging overlay to watch truth-state, directives, and SSE event
 
 **Usage:** Press `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac) to toggle the devtools overlay.
 
-[Complete Devtools Guide →](https://verity.yidi.sh/reference/devtools/)
+[Complete Devtools Guide →](https://verity.yidi.sh/guides/getting-started.html#debugging-with-devtools)
 
 ## How This Differs from Alternatives
 
@@ -194,11 +194,11 @@ Use Verity where **server truth matters**—shared, audited, multi-client data. 
 
 ## Next Steps
 
-1. Read [Philosophy](https://verity.yidi.sh/philosophy/) for the full mental model
-2. Understand [Architecture](https://verity.yidi.sh/architecture/) to see how the three layers interact
-3. Explore [Truth-State vs View-State](https://verity.yidi.sh/concepts/truth-vs-view-state/) to master the core distinction
-4. Follow [Getting Started](https://verity.yidi.sh/guides/getting-started/) to wire Verity into a new project
-5. Study the [examples](https://verity.yidi.sh/examples/) to see patterns in action
+1. Read [Philosophy](https://verity.yidi.sh/philosophy) for the full mental model
+2. Understand [Architecture](https://verity.yidi.sh/architecture) to see how the three layers interact
+3. Explore [Truth-State vs View-State](https://verity.yidi.sh/concepts/truth-vs-view-state) to master the core distinction
+4. Follow [Getting Started](https://verity.yidi.sh/guides/getting-started) to wire Verity into a new project
+5. Study the [examples](https://verity.yidi.sh/examples) to see patterns in action
 
 ## Repository Layout
 

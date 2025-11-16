@@ -1,9 +1,5 @@
 # Why Verity?
 
-> A detailed comparison of Verity's philosophy vs common alternatives
-
-This document explains why Verity exists and how it compares to other approaches for managing frontend data.
-
 ---
 
 ## The Landscape
@@ -455,9 +451,6 @@ Every team faces this challenge. Most reach for one of these solutions:
 ---
 
 ## When NOT to Use Verity
-
-!!! warning "Verity Isn't For Everything"
-    Be honest about when alternatives make more sense.
 
 === "Use htmx/LiveView If"
     - Server-rendered UI is your priority
