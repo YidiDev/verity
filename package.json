@@ -1,6 +1,6 @@
 {
   "name": "verity-dl",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "A framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth",
   "main": "verity/shared/static/lib/core.js",
   "module": "verity/shared/static/lib/core.js",
