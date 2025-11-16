@@ -8,14 +8,30 @@ copyright: Copyright &copy; 2025 Yidi Sprei
 
 nav:
   - Home: index.md
+  - Why Verity?: why-verity.md
   - Philosophy: philosophy.md
-  - Guides:
-      - Getting Started: guides/getting-started.md
+  - Architecture: architecture.md
+  - Core Concepts:
+      - Truth vs View State: concepts/truth-vs-view-state.md
+      - Directives: concepts/directives.md
+      - Levels & Conversions: concepts/levels-and-conversions.md
+      - Concurrency Model: concepts/concurrency-model.md
+  - Getting Started:
+      - Quick Start: guides/getting-started.md
       - State Model: guides/state-model.md
+      - UX Patterns: guides/ux-patterns.md
+  - Migration:
+      - From TanStack Query: migration/from-tanstack-query.md
+      - From Apollo: migration/from-apollo.md
+      - From htmx: migration/from-htmx.md
   - Reference:
-      - Core Registry: reference/core.md
+      - Core API: reference/core.md
       - Framework Adapters: reference/adapters.md
+      - Directive Contract: reference/directives.md
+      - Devtools: reference/devtools.md
   - Examples: examples.md
+  - Glossary: glossary.md
+  - FAQ: faq.md
   - Contributing: contributing.md
 theme:
   name: material
