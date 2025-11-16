@@ -37,8 +37,6 @@ jobs:
 
       - name: Publish to npm
         run: npm publish --tag latest
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
