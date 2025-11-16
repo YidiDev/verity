@@ -8,31 +8,44 @@ copyright: Copyright &copy; 2025 Yidi Sprei
 
 nav:
   - Home: index.md
-  - Why Verity?: why-verity.md
-  - Philosophy: philosophy.md
-  - Architecture: architecture.md
-  - Core Concepts:
+  - Learn:
+      - Why Verity?: why-verity.md
+      - Philosophy:
+          - Overview: philosophy/index.md
+          - Principles: philosophy/principles.md
+          - Truth vs View State: philosophy/truth-vs-view.md
+          - Directives: philosophy/directives.md
+          - Guarantees: philosophy/guarantees.md
+          - Trade-offs: philosophy/trade-offs.md
+          - Comparisons: philosophy/comparisons.md
+      - Architecture:
+          - Overview: architecture/index.md
+          - Data Flow: architecture/data-flow.md
+          - Multi-Client Sync: architecture/multi-client-sync.md
+          - Logic Placement: architecture/logic-placement.md
+          - Transport Options: architecture/transport-options.md
+  - Guides:
+      - Getting Started: guides/getting-started.md
+      - State Model: guides/state-model.md
+      - UX Patterns: guides/ux-patterns.md
+      - Examples: examples.md
+  - Concepts:
       - Truth vs View State: concepts/truth-vs-view-state.md
       - Directives: concepts/directives.md
       - Levels & Conversions: concepts/levels-and-conversions.md
       - Concurrency Model: concepts/concurrency-model.md
-  - Getting Started:
-      - Quick Start: guides/getting-started.md
-      - State Model: guides/state-model.md
-      - UX Patterns: guides/ux-patterns.md
-  - Migration:
-      - From TanStack Query: migration/from-tanstack-query.md
-      - From Apollo: migration/from-apollo.md
-      - From htmx: migration/from-htmx.md
   - Reference:
       - Core API: reference/core.md
       - Framework Adapters: reference/adapters.md
       - Directive Contract: reference/directives.md
       - Devtools: reference/devtools.md
-  - Examples: examples.md
-  - Glossary: glossary.md
-  - FAQ: faq.md
-  - Contributing: contributing.md
+  - More:
+      - Migration from TanStack Query: migration/from-tanstack-query.md
+      - Migration from Apollo: migration/from-apollo.md
+      - Migration from htmx: migration/from-htmx.md
+      - Glossary: glossary.md
+      - FAQ: faq.md
+      - Contributing: contributing.md
 theme:
   name: material
   features:

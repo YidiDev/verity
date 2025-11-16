@@ -6,28 +6,18 @@ Verity positions itself as **the backend of your frontend**—a dedicated data l
 
 ## The Three Layers
 
-```
-┌─────────────────────────────────────────┐
-│             Server Layer                │
-│  (Domain Logic, Persistence, Authority) │
-└──────────────┬──────────────────────────┘
-               │
-               │ HTTP/GraphQL/gRPC
-               │ Directives via SSE
-               │
-┌──────────────▼──────────────────────────┐
-│         Verity Data Layer               │
-│  (Caching, Staleness, Fan-out, Fetch)   │
-│        "Backend of Frontend"            │
-└──────────────┬──────────────────────────┘
-               │
-               │ Stable Refs { data, meta }
-               │ Subscribe API
-               │
-┌──────────────▼──────────────────────────┐
-│           View Layer                    │
-│  (Rendering, View-State, User Events)   │
-└─────────────────────────────────────────┘
+```mermaid
+graph TD
+    Server["Server Layer<br/>(Domain Logic, Persistence, Authority)"]
+    Verity["Verity Data Layer<br/>(Caching, Staleness, Fan-out, Fetch)<br/>Backend of Frontend"]
+    View["View Layer<br/>(Rendering, View-State, User Events)"]
+    
+    Server -->|"HTTP/GraphQL/gRPC<br/>Directives via SSE"| Verity
+    Verity -->|"Stable Refs {data, meta}<br/>Subscribe API"| View
+    
+    style Server fill:#e3f2fd
+    style Verity fill:#fff3e0
+    style View fill:#f3e5f5
 ```
 
 ### Layer 1: Server
