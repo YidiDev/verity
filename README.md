@@ -1,71 +1,204 @@
 # Verity
 
-[![npm version](https://badge.fury.io/js/verity-dl.svg)](https://www.npmjs.com/package/verity-dl)
+> **One strong idea:** the server is the only source of truth.  
+> **One clear boundary:** **truth-state** (server-owned) is not the same as **view-state** (client-owned).  
+> **One purpose:** a composable data layer that mediates between them—protocol-agnostic, framework-agnostic, and honest.
 
-Verity is a framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth.
-Instead of guessing about state, Verity waits for authoritative answers from the backend
-and reflects them across every connected client through server-sent directives.
+Verity is the **backend of your frontend**. It sits between your server and view layer, handling caching, staleness, fan-out, and directive processing so your UI can focus purely on rendering.
 
-Verity provides a data-first UI toolkit with the following structure:
+## The Problem
 
-- **`verity/`** — the core Flask helpers, JavaScript data layer, and multi-framework adapters.
-- **`verity/examples/`** — production-scale demos for Alpine.js, React, and Vue along with
-  "baseline" builds that intentionally skip Verity so you can compare behaviors.
-- **`docs/`** — MkDocs-ready documentation that explains Verity's mental model, API surface,
-  and example walkthroughs.
-- **`.github/workflows/docs.yml`** — a GitHub Action that deploys the MkDocs site to GitHub Pages.
-- **`LICENSE`**, **`CONTRIBUTING.md`**, and **`README.md`** — resources to help collaborators get started.
+Modern frontends blur two fundamentally different kinds of state:
 
-## Core Ideas
+- **Truth-state** — authoritative data whose source of truth is the server (domain models, records, counters, permissions)
+- **View-state** — ephemeral client concerns (which menu is open, which row is expanded, which tab has focus)
 
-Verity is built on four promises:
+Most frameworks *can* represent both, but they rarely enforce a practical boundary. Teams end up mixing "what the server says" with "what the UI is doing," then try to paper over races and stale views with **optimistic updates**. That creates flicker, mismatch, and user distrust.
 
-1. **Server truth:** the backend is the only authority. Verity does not perform optimistic
-   writes or display speculative UI states.
-2. **Directive-driven updates:** the server emits directives via Server-Sent Events (SSE).
-   Clients apply those directives to keep caches current without refetch storms.
-3. **Deterministic caching:** collections and items are registered with explicit staleness
-   windows and fetch functions so data remains fresh without guesswork.
-4. **Framework-agnostic adapters:** Alpine, Vue, React, and Svelte bindings all consume the
-   same core library and share identical semantics.
+## The Solution
 
-If a value is unknown, Verity renders honest loading affordances (skeletons, spinners,
-progress bars) instead of faking certainty. This focus on truth builds user trust and
-sharpens the separation between state management and rendering.
+**Verity separates the lanes:**
+
+1. The **server** owns data integrity and business logic
+2. **Verity** is the **backend of the frontend**: it fetches, coalesces, tracks staleness, reacts to server **directives**, and exposes stable references to truth-state
+3. The **view layer** renders those references and manages local view-state—**without** fetching, caching, guessing, or coordinating invalidation
+
+This separation isn't just conceptual—it shows up in Verity's public API, internal guarantees, and strict UX policy.
+
+## Core Principles
+
+**Server Truth Only**  
+The UI changes **after** the server confirms change. Unknowns render as skeletons; work in progress renders as spinners. No temporary lies, no speculation.
+
+**Directive-Driven Updates**  
+Rather than pushing DOM or raw events, servers emit **semantic directives**—small, transport-agnostic messages that describe what should be refreshed. Directives decouple server logic from UI structure and compose beautifully: mutation responses provide immediate local echo, while **fan-out over SSE** keeps other tabs and devices consistent.
+
+**Levels & Minimal Fetching**  
+A single entity can be viewed at different detail levels (`simplified`, `expanded`). Verity lets you declare conversion graphs so one fetch can satisfy multiple levels without redundant network calls. When directives arrive, Verity computes the minimal set of refetches needed to return to truth.
+
+**Framework-Agnostic Core**  
+Verity exposes stable refs (`{ data, meta }`) and a subscribe API. Thin adapters wire that into Alpine, React, Vue, or Svelte with identical semantics. The value lives in the core, not the glue.
+
+**Honest by Design**  
+Perceived snappiness never justifies lying. If your product needs "instant echo," build endpoints that return the truth immediately—don't fake it in the client.
 
 ## Quick Start
 
-1. **Install dependencies**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
-   ```
-2. **Run an example**
-   ```bash
-   export FLASK_DEBUG=1
-   python verity/examples/invoices_alpine/app.py
-   # or try the manufacturing control room
-   python verity/examples/manufacturing_monitor/app.py
-   ```
-3. **Visit the docs**
-   ```bash
-   mkdocs serve
-   ```
-   Then open <http://127.0.0.1:8000> to explore the guides and API reference.
+### No Build Tools? No Problem!
 
-## Philosophy Snapshot
+Drop these script tags into your HTML and you're ready to go:
 
-- **No optimism:** Verity refuses to predict the future. Buttons show a busy state, and
-  tables use skeleton rows until confirmed data arrives.
-- **Explicit lifetimes:** data is cached with explicit TTLs and revalidation triggers.
-- **Directive logs:** every directive is idempotent and carries metadata for replay,
-  debugging, and resynchronisation.
-- **Shared devtools:** a lightweight diagnostics panel surfaces cache contents, events,
-  and lifecycle hooks regardless of the UI framework you choose.
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Alpine.js -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  
+  <!-- Verity core -->
+  <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/lib/core.js"></script>
+  
+  <!-- Verity Alpine adapter -->
+  <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/adapters/alpine.js"></script>
+</head>
+<body>
 
-For a deeper exploration, read [`docs/philosophy.md`](docs/philosophy.md) and the MkDocs
-site that accompanies this release.
+<!-- Your app -->
+<div x-data="verity.collection('todos')">
+  <template x-if="state.loading">
+    <p>Loading todos...</p>
+  </template>
+  <template x-for="todo in state.items" :key="todo.id">
+    <div x-text="todo.title"></div>
+  </template>
+</div>
+
+<!-- Verity setup -->
+<script>
+  const registry = Verity.createRegistry()
+  
+  registry.registerCollection('todos', {
+    fetch: () => fetch('/api/todos').then(r => r.json())
+  })
+  
+  registry.registerType('todo', {
+    fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json())
+  })
+  
+  VerityAlpine.install(window.Alpine, { registry })
+</script>
+
+</body>
+</html>
+```
+
+**For production, use the minified versions:**
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/lib/core.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/adapters/alpine.min.js"></script>
+```
+
+### Using npm (for build pipelines)
+
+If you're using a bundler like Vite, Webpack, or Rollup:
+
+```bash
+npm install verity-dl
+```
+
+```javascript
+import { createRegistry } from 'verity-dl'
+import { installAlpine } from 'verity-dl/adapters/alpine'
+
+const registry = createRegistry()
+// ... configure and use
+```
+
+### Run Examples Locally
+
+The repository includes full-stack examples built with Flask:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+# Run an example
+python verity/examples/invoices_alpine/app.py
+# or try the manufacturing control room
+python verity/examples/manufacturing_monitor/app.py
+```
+
+### Explore Documentation
+
+Visit [verity.yidi.sh](https://verity.yidi.sh) or run locally:
+
+```bash
+mkdocs serve
+```
+
+Then open <http://127.0.0.1:8000> to dive into the mental model, guides, and API reference.
+
+### Debug with Devtools
+
+Add the visual debugging overlay to watch truth-state, directives, and SSE events in real-time:
+
+```html
+<!-- Add to development builds -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.css">
+<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.js"></script>
+```
+
+**Usage:** Press `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac) to toggle the devtools overlay.
+
+[Complete Devtools Guide →](https://verity.yidi.sh/reference/devtools/)
+
+## How This Differs from Alternatives
+
+### vs htmx / LiveView / Turbo Streams
+✅ Server is the source of truth  
+❌ Server dictates DOM, tightly couples backend to view structure  
+**Verity** pushes **data intent** (directives) and keeps **view-state** client-owned
+
+### vs TanStack Query / RTK Query / Apollo
+✅ Mature caches, good invalidation tooling, multi-framework support  
+❌ Optimistic updates are first-class; invalidation semantics are app-defined glue; no concept of levels + conversion planning; server doesn't author the invalidation contract  
+**Verity** bakes invalidation semantics into a **server-authored contract** and plans minimal refetches
+
+### vs Roll-Your-Own Store + Fetch
+✅ Maximum control  
+❌ Re-implement coalescing, latest-wins, push integration, multi-client convergence, and UX semantics—again and again  
+**Verity** exists to be the boring, correct default
+
+## What's Included
+
+- **`verity/`** — Flask helpers, JavaScript core, and multi-framework adapters
+- **`verity/examples/`** — Production-scale demos for Alpine, React, and Vue, plus "baseline" builds that skip Verity so you can compare behaviors
+- **`docs/`** — MkDocs documentation covering the mental model, directive contract, API surface, and example walkthroughs
+- **`.github/workflows/docs.yml`** — GitHub Action that deploys the docs site to GitHub Pages
+
+## Design Guarantees
+
+- **Latest-wins**: stale network results won't clobber newer state
+- **Coalesced**: identical in-flight requests reuse one promise
+- **Deterministic**: the same sequence of directives + responses yields the same cache
+- **Isolated**: truth-state doesn't leak view concerns; view-state doesn't influence server truth
+- **Pluggable**: fetchers and directive sources are replaceable without touching views
+
+## When to Use Verity
+
+Use Verity where **server truth matters**—shared, audited, multi-client data. Keep purely local UIs (menus, focus, modals) in your framework's own state.
+
+**Smell test:** if changing tabs or reloading should reset it, it's probably view-state. If a coworker on another device must see it, it's truth-state.
+
+## Next Steps
+
+1. Read [Philosophy](https://verity.yidi.sh/philosophy/) for the full mental model
+2. Understand [Architecture](https://verity.yidi.sh/architecture/) to see how the three layers interact
+3. Explore [Truth-State vs View-State](https://verity.yidi.sh/concepts/truth-vs-view-state/) to master the core distinction
+4. Follow [Getting Started](https://verity.yidi.sh/guides/getting-started/) to wire Verity into a new project
+5. Study the [examples](https://verity.yidi.sh/examples/) to see patterns in action
 
 ## Repository Layout
 
@@ -73,9 +206,13 @@ site that accompanies this release.
 verity/
 ├─ shared/            # Static assets (core library, adapters, devtools)
 └─ examples/          # Full-stack reference applications
-docs/                 # MkDocs content (guides, reference, examples)
+docs/                 # MkDocs content (philosophy, guides, reference, examples)
 mkdocs.yml            # MkDocs configuration
 CONTRIBUTING.md       # Contribution guide
 LICENSE               # MIT License
-requirements.txt      # Runtime dependencies for examples and docs
+requirements.txt      # Runtime dependencies
 ```
+
+## License
+
+MIT. Build trustworthy, data-heavy apps with a simple, honest UI.
