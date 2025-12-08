@@ -2095,11 +2095,36 @@ const DLCore = {
     ingestDirectiveEnvelope,
 };
 
+// ES MODULE EXPORTS (for modern bundlers and ES imports)
+if (typeof exports !== "undefined") {
+    exports.init = init;
+    exports.onChange = onChange;
+    exports.createType = createType;
+    exports.createCollection = createCollection;
+    exports.fetchCollection = fetchCollection;
+    exports.fetchItem = fetchItem;
+    exports.applyDirectives = applyDirectives;
+    exports.state = state;
+    exports.devtools = devtools;
+    exports.clientId = clientId;
+    exports.onLifecycle = onLifecycle;
+    exports.configureDirectiveSource = configureDirectiveSource;
+    exports.configureSse = configureSse;
+    exports.configureMemory = configureMemory;
+    exports.connectDirectiveSource = connectDirectiveSource;
+    exports.connectSse = connectSse;
+    exports.disconnectDirectiveSource = disconnectDirectiveSource;
+    exports.disconnectSse = disconnectSse;
+    exports.ingestDirectiveEnvelope = ingestDirectiveEnvelope;
+}
+
+// UMD/Browser compatibility (for script tag loading)
 const target = global || (typeof globalThis !== "undefined" ? globalThis : undefined);
 if (target) {
     target.DLCore = DLCore;
 }
 
+// CommonJS default export (for backward compatibility)
 if (typeof module !== "undefined" && module.exports) {
     module.exports = DLCore;
 }
