@@ -2,7 +2,21 @@
 "use strict";
 
 const root = global || (typeof globalThis !== "undefined" ? globalThis : this);
-const DLCore = root && root.DLCore;
+
+// Try to get DLCore from ES module exports first, then fall back to global
+let DLCore;
+if (typeof module !== "undefined" && typeof require !== "undefined") {
+    try {
+        // Try to require core if in CommonJS/Node environment
+        DLCore = require("../lib/core.js");
+    } catch (e) {
+        // Fall back to global
+        DLCore = root && root.DLCore;
+    }
+} else {
+    DLCore = root && root.DLCore;
+}
+
 if (!DLCore) {
     throw new Error("DLCore must be loaded before the React adapter");
 }
@@ -209,6 +223,22 @@ const ReactAdapter = {
     useDLState,
 };
 
+// ES MODULE EXPORTS (for modern bundlers and ES imports)
+if (typeof exports !== "undefined") {
+    // Export all restCore functions
+    Object.keys(restCore).forEach(key => {
+        exports[key] = restCore[key];
+    });
+    // Export adapter-specific functions and overrides
+    exports.state = coreState;
+    exports.init = init;
+    exports.subscribe = subscribe;
+    exports.useCollection = useCollection;
+    exports.useItem = useItem;
+    exports.useDLState = useDLState;
+}
+
+// UMD/Browser compatibility (for script tag loading)
 if (root) {
     root.DLAdapters = root.DLAdapters || {};
     const adapters = root.DLAdapters;
@@ -221,6 +251,7 @@ if (root) {
     }
 }
 
+// CommonJS default export (for backward compatibility)
 if (typeof module !== "undefined" && module.exports) {
     module.exports = ReactAdapter;
 }

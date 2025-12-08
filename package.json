@@ -1,9 +1,41 @@
 {
   "name": "verity-dl",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth",
   "main": "verity/shared/static/lib/core.js",
   "module": "verity/shared/static/lib/core.js",
+  "exports": {
+    ".": {
+      "import": "./verity/shared/static/lib/core.js",
+      "require": "./verity/shared/static/lib/core.js",
+      "default": "./verity/shared/static/lib/core.js"
+    },
+    "./adapters/alpine": {
+      "import": "./verity/shared/static/adapters/alpine.js",
+      "require": "./verity/shared/static/adapters/alpine.js",
+      "default": "./verity/shared/static/adapters/alpine.js"
+    },
+    "./adapters/react": {
+      "import": "./verity/shared/static/adapters/react.js",
+      "require": "./verity/shared/static/adapters/react.js",
+      "default": "./verity/shared/static/adapters/react.js"
+    },
+    "./adapters/vue": {
+      "import": "./verity/shared/static/adapters/vue.js",
+      "require": "./verity/shared/static/adapters/vue.js",
+      "default": "./verity/shared/static/adapters/vue.js"
+    },
+    "./adapters/svelte": {
+      "import": "./verity/shared/static/adapters/svelte.js",
+      "require": "./verity/shared/static/adapters/svelte.js",
+      "default": "./verity/shared/static/adapters/svelte.js"
+    },
+    "./devtools": {
+      "import": "./verity/shared/static/devtools/devtools.js",
+      "require": "./verity/shared/static/devtools/devtools.js",
+      "default": "./verity/shared/static/devtools/devtools.js"
+    }
+  },
   "files": [
     "verity/shared/static/**/*"
   ],
