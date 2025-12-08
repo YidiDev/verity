@@ -366,10 +366,17 @@ DL.createType('todo', { /* ... */ })
 // In components
 export default {
   setup() {
-    const todos = useCollection('todos')
+    const dl = useDL()
+    const todosRef = dl.col('todos', { params: { status: 'active' } })
     
-    return { todos }
-  }
+    return { todosRef }
+  },
+  template: `
+    <div v-if="todosRef.meta.isLoading">Loading...</div>
+    <ul v-else>
+      <li v-for="id in todosRef.data.ids" :key="id">{{ id }}</li>
+    </ul>
+  `
 }
 ```
 
