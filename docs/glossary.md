@@ -81,7 +81,7 @@ A **parameterized list of items** from the server. Collections support filtering
 
 **Registration:**
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params) => { /* ... */ }
 })
 ```
@@ -100,7 +100,7 @@ A **single record** identified by parameters (usually an ID). Items are register
 
 **Registration:**
 ```javascript
-registry.registerType('user', {
+DL.createType('user', {
   fetch: async ({ userId }) => { /* ... */ }
 })
 ```
@@ -130,7 +130,7 @@ A **transformation function** that derives one level from another without a netw
 
 **Example:**
 ```javascript
-registry.registerConversion('todo', 'full', 'expanded', (full) => {
+// Level conversions are defined in createType('todo', 'full', 'expanded', (full) => {
   const { comments, attachments, ...expanded } = full
   return expanded
 })
@@ -153,7 +153,7 @@ The **age-based freshness** of cached data. Items are **fresh** within `stalenes
 
 **Configuration:**
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: /* ... */,
   stalenessMs: 30000  // 30 seconds
 })
@@ -173,7 +173,7 @@ A **unique identifier** for a cached collection/item, combining name and seriali
 
 **Custom keys:**
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   key: (params) => `todos:${params.status || 'all'}`
 })
 ```
@@ -186,12 +186,12 @@ registry.registerCollection('todos', {
 
 **Configuration:**
 ```javascript
-registry.createRegistry({
+DL.init({
   bulk: { delayMs: 50 }  // Wait 50ms to collect requests
 })
 ```
 
-**See:** [Core API Reference](reference/core.md#createregistry)
+**See:** [Core API Reference](reference/core.md#initoptions)
 
 ---
 
@@ -247,7 +247,7 @@ emit_directives(directives, audience='user-123')
 
 **Client:**
 ```javascript
-const registry = createRegistry({
+DL.init({
   sse: { audience: 'user-123' }
 })
 ```
@@ -275,7 +275,7 @@ A **forced refetch** of all active collections, triggered when SSE sequence gap 
 
 **Trigger:**
 ```javascript
-await registry.resync()
+// Resync is handled automatically by SSE
 ```
 
 **Use case:** Recovery from missed SSE messages
@@ -292,7 +292,7 @@ A **unidirectional push protocol** from server to client for real-time directive
 
 **Configuration:**
 ```javascript
-const registry = createRegistry({
+DL.init({
   sse: {
     url: '/api/events',
     audience: 'global',
@@ -313,7 +313,7 @@ const registry = createRegistry({
 ```javascript
 const res = await fetch('/api/todos/42', { method: 'PUT', ... })
 const { directives } = await res.json()
-await registry.applyDirectives(directives)
+DL.applyDirectives(directives)
 ```
 
 **See:** [Directive Transport](reference/directives.md#pull-path-mutation-response)
@@ -467,7 +467,7 @@ A **unique identifier** for a Verity registry instance, used for directive sourc
 
 **Access:**
 ```javascript
-console.log(registry.clientId)  // "client-abc123xyz"
+console.log(DL.clientId())  // "client-abc123xyz"
 ```
 
 **Usage:** Include in mutation headers to tag directives

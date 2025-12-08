@@ -89,7 +89,7 @@ This guide helps you move from htmx's HTML-over-the-wire approach to Verity's da
       //   ]
       // }
       
-      await registry.applyDirectives(payload.directives)
+      DL.applyDirectives(payload.directives)
     }
     ```
     
@@ -161,7 +161,7 @@ Migrate page by page while keeping both systems running.
           body: JSON.stringify({ title: this.title })
         })
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
         this.title = ''
       }
     }">
@@ -302,7 +302,7 @@ htmx users often value simplicity. Consider:
 </head>
 
 <script>
-const registry = Verity.createRegistry()
+DL.init()
 VerityAlpine.install(window.Alpine, { registry })
 </script>
 ```
@@ -393,7 +393,7 @@ VerityAlpine.install(window.Alpine, { registry })
           headers: { 'X-Client-ID': registry.clientId }
         })
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
       }
     }">
       <template x-if="todos.state.loading">
@@ -427,7 +427,7 @@ VerityAlpine.install(window.Alpine, { registry })
 === "After (Verity SSE)"
     ```javascript
     // Setup once
-    const registry = Verity.createRegistry({
+    DL.init({
       sse: {
         url: '/api/events',
         audience: 'global'
@@ -554,7 +554,7 @@ VerityAlpine.install(window.Alpine, { registry })
           body: JSON.stringify({ title: this.editTitle })
         })
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
         this.editing = false
       }
     }">

@@ -359,7 +359,7 @@ def update_todo(todo_id):
 </head>
 
 <script>
-const registry = Verity.createRegistry()
+DL.init()
 
 // Helper for mutations
 async function updateTodo(id, data) {
@@ -376,7 +376,7 @@ async function updateTodo(id, data) {
   
   // Apply directives
   if (payload.directives) {
-    await registry.applyDirectives(payload.directives)
+    DL.applyDirectives(payload.directives)
   }
   
   return payload
@@ -389,7 +389,7 @@ async function updateTodo(id, data) {
 SSE connection is automatic by default:
 
 ```javascript
-const registry = createRegistry({
+DL.init({
   sse: {
     url: '/api/events',          // SSE endpoint
     audience: 'global',           // or user-specific

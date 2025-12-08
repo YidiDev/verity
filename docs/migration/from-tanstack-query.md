@@ -54,11 +54,11 @@ This guide helps you transition from TanStack Query to Verity while understandin
 === "Verity"
     ```javascript
     // Register once (at app root)
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: () => fetch('/api/todos').then(r => r.json())
     })
     
-    registry.registerType('todo', {
+    DL.createType('todo', {
       fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json())
     })
     
@@ -107,7 +107,7 @@ This guide helps you transition from TanStack Query to Verity while understandin
       //   { op: 'refresh_collection', name: 'stats' }
       // ]
       
-      await registry.applyDirectives(payload.directives)
+      DL.applyDirectives(payload.directives)
     }
     ```
 
@@ -168,7 +168,7 @@ This guide helps you transition from TanStack Query to Verity while understandin
         })
         
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
       } finally {
         isUpdating = false
       }
@@ -216,9 +216,9 @@ This guide helps you transition from TanStack Query to Verity while understandin
 Create `src/verity.js`:
 
 ```javascript
-import { createRegistry } from 'verity-dl'
+import { init, createType, createCollection } from 'verity-dl'
 
-export const registry = createRegistry({
+export DL.init({
   sse: {
     url: '/api/events',
     audience: 'global'
@@ -255,7 +255,7 @@ export const registry = createRegistry({
 === "After (Verity)"
     ```javascript
     // In src/verity.js (once)
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: () => fetch('/api/todos').then(r => r.json()),
       stalenessMs: 60_000
     })
@@ -283,7 +283,7 @@ export const registry = createRegistry({
 === "After (Verity)"
     ```javascript
     // In src/verity.js
-    registry.registerType('todo', {
+    DL.createType('todo', {
       fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json()),
       stalenessMs: 5 * 60 * 1000
     })
@@ -305,7 +305,7 @@ export const registry = createRegistry({
 === "After (Verity)"
     ```javascript
     // In src/verity.js
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params = {}) => {
         const url = new URL('/api/todos', location.origin)
         if (params.status) url.searchParams.set('status', params.status)
@@ -354,7 +354,7 @@ export const registry = createRegistry({
         })
         
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
       } finally {
         setIsCreating(false)
       }
@@ -526,7 +526,7 @@ def sse_stream():
 === "Verity"
     ```javascript
     const prefetch = () => {
-      registry.item('todo', id)  // Silent fetch starts
+      DL.fetchItem('todo', id)  // Silent fetch starts
     }
     
     <Link onMouseEnter={prefetch} />
@@ -657,7 +657,7 @@ return {
           })
           
           const { directives } = await res.json()
-          await registry.applyDirectives(directives)
+          DL.applyDirectives(directives)
         } finally {
           setIsCreating(false)
         }

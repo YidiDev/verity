@@ -190,7 +190,7 @@ def archive_project(id):
       const res = await fetch(`/api/todos/${id}`, { method: 'DELETE' })
       const { directives } = await res.json()
       // Server tells us exactly what changed:
-      await registry.applyDirectives(directives)
+      DL.applyDirectives(directives)
     }
     ```
     
@@ -291,7 +291,7 @@ def archive_project(id):
 **Implementation:**
 
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params) => {
     const query = `
       query GetTodos($status: String) {
@@ -364,7 +364,7 @@ registry.configureDirectiveSource({
 **Answer:** Use **params for pagination**:
 
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params = {}) => {
     const url = new URL('/api/todos', window.location.origin)
     url.searchParams.set('page', params.page || 1)
@@ -385,8 +385,8 @@ registry.registerCollection('todos', {
 })
 
 // Usage
-const page1 = registry.collection('todos', { page: 1 })
-const page2 = registry.collection('todos', { page: 2 })
+const page1 = DL.fetchCollection('todos', { page: 1 })
+const page2 = DL.fetchCollection('todos', { page: 2 })
 ```
 
 **Each page is cached separately.** When directives arrive:
@@ -425,7 +425,7 @@ Or target specific page:
     const currentPage = ref(1)
     
     async function loadMore() {
-      const handle = registry.collection('todos', { 
+      const handle = DL.fetchCollection('todos', { 
         page: currentPage.value 
       })
       
@@ -439,7 +439,7 @@ Or target specific page:
 
 === "Server-side Cursor"
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params = {}) => {
         const url = new URL('/api/todos', window.location.origin)
         if (params.cursor) url.searchParams.set('cursor', params.cursor)
@@ -458,8 +458,8 @@ Or target specific page:
     })
     
     // Each cursor is a separate collection
-    const batch1 = registry.collection('todos', { cursor: null })
-    const batch2 = registry.collection('todos', { cursor: 'abc123' })
+    const batch1 = DL.fetchCollection('todos', { cursor: null })
+    const batch2 = DL.fetchCollection('todos', { cursor: 'abc123' })
     ```
 
 **Recommendation:** Use **cursor-based** approach for proper directive handling.
@@ -482,12 +482,13 @@ Or target specific page:
 
 ```javascript
 // User-specific registry
-const userRegistry = createRegistry({
+DL.init({
   sse: { audience: `user-${userId}` }
 })
 
 // Admin-specific registry
-const adminRegistry = createRegistry({
+// Configure separate instances as needed
+DL.init({
   sse: { audience: 'admin' },
   memory: { stalenessMs: 5000 }  // More aggressive for admin
 })
@@ -506,7 +507,7 @@ const adminRegistry = createRegistry({
 
 === "Cookies (Recommended)"
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params) => {
         const res = await fetch('/api/todos', {
           credentials: 'include'  // ← Send cookies
@@ -516,7 +517,7 @@ const adminRegistry = createRegistry({
     })
     
     // SSE with credentials
-    createRegistry({
+    DL.init({
       sse: {
         url: '/api/events',
         withCredentials: true  // ← Send cookies
@@ -528,7 +529,7 @@ const adminRegistry = createRegistry({
     ```javascript
     const getAuthToken = () => localStorage.getItem('auth_token')
     
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params) => {
         const res = await fetch('/api/todos', {
           headers: {
@@ -542,7 +543,7 @@ const adminRegistry = createRegistry({
 
 === "Custom Header"
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params) => {
         const res = await fetch('/api/todos', {
           headers: {
@@ -593,7 +594,7 @@ const adminRegistry = createRegistry({
 
 3. **Check if directive is applied:**
    ```javascript
-   await registry.applyDirectives(payload.directives)
+   DL.applyDirectives(payload.directives)
    // Did you forget to call this?
    ```
 
@@ -610,7 +611,7 @@ const adminRegistry = createRegistry({
 
 6. **Check `check` function:**
    ```javascript
-   registry.registerCollection('todos', {
+   DL.createCollection('todos', {
      fetch: /* ... */,
      check: (directive) => {
        console.log('Check function called:', directive)
@@ -632,19 +633,21 @@ const adminRegistry = createRegistry({
 
 ```javascript
 // Refresh a collection
-const todos = registry.collection('todos', { status: 'active' })
-await todos.refresh()
+const todos = DL.fetchCollection('todos', { status: 'active' })
+// Refetch with force flag
+DL.fetchCollection('todos', { params: { status: 'active' }, force: true })
 
 // Refresh an item
-const user = registry.item('user', { userId: 123 })
-await user.refresh()
+const user = DL.fetchItem('user', { userId: 123 })
+// Refetch with force flag
+DL.fetchItem('user', 123, null, { force: true })
 ```
 
 **Check staleness settings:**
 
 ```javascript
 // Make data refresh more aggressively
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: /* ... */,
   stalenessMs: 10000  // 10 seconds instead of default 60 seconds
 })
@@ -727,7 +730,7 @@ await registry.resync()
 
 === "Increase Staleness"
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: /* ... */,
       stalenessMs: 300000  // 5 minutes instead of 1 minute
     })
@@ -736,12 +739,12 @@ await registry.resync()
 === "Use Level Conversions"
     ```javascript
     // Fetch full level once, derive others
-    registry.registerConversion('todo', 'full', 'expanded', (full) => {
+    // Level conversions are defined in createType('todo', 'full', 'expanded', (full) => {
       const { comments, ...expanded } = full
       return expanded
     })
     
-    registry.registerConversion('todo', 'expanded', 'simplified', (expanded) => {
+    // Level conversions are defined in createType('todo', 'expanded', 'simplified', (expanded) => {
       const { description, assignee, ...simplified } = expanded
       return simplified
     })
@@ -762,7 +765,7 @@ await registry.resync()
 
 === "Increase Coalescing Window"
     ```javascript
-    createRegistry({
+    DL.init({
       bulk: { delayMs: 200 }  // Wait 200ms to batch requests
     })
     ```
@@ -793,7 +796,7 @@ await registry.resync()
 
 1. **Use pagination:**
    ```javascript
-   registry.registerCollection('todos', {
+   DL.createCollection('todos', {
      fetch: async (params = {}) => {
        const limit = params.limit || 50  // Fetch in chunks
        const page = params.page || 1

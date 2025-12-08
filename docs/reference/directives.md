@@ -371,7 +371,7 @@ def update_user_settings(user_id):
 
 **Client Setup:**
 ```javascript
-const registry = Verity.createRegistry({
+DL.init({
   sse: {
     url: '/api/events',
     audience: `user-${currentUserId}`  // Subscribe to user-specific events
@@ -509,7 +509,7 @@ const response = await fetch('/api/todos/42', {
   method: 'PUT',
   headers: {
     'Content-Type': 'application/json',
-    'X-Verity-Client-ID': registry.clientId  // Tag with client ID
+    'X-Verity-Client-ID': DL.clientId()  // Tag with client ID
   },
   body: JSON.stringify({ title: 'New title' })
 })
@@ -518,7 +518,7 @@ const payload = await response.json()
 
 // Apply directives
 if (payload.directives) {
-  await registry.applyDirectives(payload.directives)
+  DL.applyDirectives(payload.directives)
 }
 ```
 
@@ -571,7 +571,7 @@ def update_todo(todo_id):
 #### Client Setup
 
 ```javascript
-const registry = Verity.createRegistry({
+DL.init({
   sse: {
     url: '/api/events',
     audience: 'global',

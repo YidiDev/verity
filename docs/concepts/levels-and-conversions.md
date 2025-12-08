@@ -78,7 +78,7 @@ GET /api/todos/${id}/with-comments
 Define **explicit, named** detail levels for each entity type:
 
 ```javascript
-registry.registerType('todo', {
+DL.createType('todo', {
   // Default level (minimal)
   fetch: ({ id }) => 
     fetch(`/api/todos/${id}`).then(r => r.json()),
@@ -114,12 +114,12 @@ registry.registerType('todo', {
 
 ```html
 <script type="module">
-import { createRegistry } from 'https://cdn.jsdelivr.net/npm/verity-dl@latest/+esm'
+import { init, createType, createCollection } from 'https://cdn.jsdelivr.net/npm/verity-dl@latest/+esm'
 
-const registry = createRegistry()
+DL.init()
 
 // Request a specific level
-const todo = registry.item('todo', 42, 'detailed')
+const todo = DL.fetchItem('todo', 42, 'detailed')
 
 // Access data
 if (todo.meta.loading) {
@@ -134,22 +134,22 @@ if (todo.meta.loading) {
 
 ```javascript
 // First request: fetches 'detailed' level
-const todo1 = registry.item('todo', 42, 'detailed')
+const todo1 = DL.fetchItem('todo', 42, 'detailed')
 // → fetch('/api/todos/42?level=detailed')
 
 // Second request: uses cached data (if fresh)
-const todo2 = registry.item('todo', 42, 'detailed')
+const todo2 = DL.fetchItem('todo', 42, 'detailed')
 // → no fetch, returns cached data
 
 // Different level: fetches separately
-const todo3 = registry.item('todo', 42, 'full')
+const todo3 = DL.fetchItem('todo', 42, 'full')
 // → fetch('/api/todos/42?level=full')
 ```
 
 ### Staleness Per Level
 
 ```javascript
-registry.registerType('todo', {
+DL.createType('todo', {
   stalenessMs: 60_000,  // Default: 60s
   
   levels: {
@@ -172,12 +172,12 @@ Here's where Verity gets clever: **One fetch can satisfy multiple levels without
 
 ```javascript
 // User requests 'full' level
-const todo = registry.item('todo', 42, 'full')
+const todo = DL.fetchItem('todo', 42, 'full')
 // → fetch('/api/todos/42?level=full')
 // Returns: { id, title, status, description, assignee, comments, history }
 
 // Later, user requests 'detailed' level
-const todo2 = registry.item('todo', 42, 'detailed')
+const todo2 = DL.fetchItem('todo', 42, 'detailed')
 // → Should we refetch? Or does 'full' data satisfy 'detailed'?
 ```
 
@@ -193,7 +193,7 @@ const todo2 = registry.item('todo', 42, 'detailed')
 ### Declaring Conversions
 
 ```javascript
-registry.registerType('todo', {
+DL.createType('todo', {
   fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json()),
   
   levels: {
@@ -243,7 +243,7 @@ registry.registerType('todo', {
 
 ### How Conversion Works
 
-1. **User requests level:** `registry.item('todo', 42, 'detailed')`
+1. **User requests level:** `DL.fetchItem('todo', 42, 'detailed')`
 2. **Verity checks cache:** Do we have fresh 'detailed' data?
 3. **If not, check conversions:** Do we have fresh 'full' data?
 4. **If yes:**
@@ -259,7 +259,7 @@ registry.registerType('todo', {
 **Best practice:** Define one "maximal" level that includes all fields, then derive narrower levels from it.
 
 ```javascript
-registry.registerType('todo', {
+DL.createType('todo', {
   // Minimal default
   fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json()),
   
@@ -570,7 +570,7 @@ levels: {
 ### Scenario 1: List + Detail View
 
 ```javascript
-registry.registerType('product', {
+DL.createType('product', {
   // List view needs: id, name, price, image
   fetch: ({ id }) => fetch(`/api/products/${id}`).then(r => r.json()),
   
@@ -608,7 +608,7 @@ registry.registerType('product', {
 ### Scenario 3: Dashboard with Metrics
 
 ```javascript
-registry.registerType('project', {
+DL.createType('project', {
   // Minimal: just name and status
   fetch: ({ id }) => fetch(`/api/projects/${id}`).then(r => r.json()),
   
@@ -632,12 +632,12 @@ registry.registerType('project', {
 ```javascript
 test('fetching expanded level satisfies detailed', async () => {
   // Fetch expanded
-  const item1 = registry.item('todo', 42, 'expanded')
+  const item1 = DL.fetchItem('todo', 42, 'expanded')
   await waitFor(() => !item1.meta.loading)
   
   // Request detailed (should not fetch)
   const fetchSpy = vi.spyOn(window, 'fetch')
-  const item2 = registry.item('todo', 42, 'detailed')
+  const item2 = DL.fetchItem('todo', 42, 'detailed')
   
   expect(item2.data).toBe(item1.data)  // Same data
   expect(fetchSpy).not.toHaveBeenCalled()  // No refetch
@@ -656,7 +656,7 @@ test('conversion only happens if checkIfExists passes', () => {
   })
   
   // Try to use for 'detailed'
-  const item = registry.item('todo', 42, 'detailed')
+  const item = DL.fetchItem('todo', 42, 'detailed')
   
   // Should trigger fetch (checkIfExists fails)
   expect(item.meta.loading).toBe(true)

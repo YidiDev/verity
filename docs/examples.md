@@ -135,7 +135,7 @@ graph TB
 === "Parameterized Collections"
     ```javascript
     // Different analysts see different cases
-    registry.registerCollection('cases', {
+    DL.createCollection('cases', {
       fetch: async (params) => {
         const url = new URL('/api/cases', location.origin)
         if (params.status) url.searchParams.set('status', params.status)
@@ -409,7 +409,8 @@ graph TB
 === "Client-Side Audience"
     ```javascript
     // Nurse connects to nurse audience
-    const nurseRegistry = createRegistry({
+    // Nurse instance
+DL.init({
       sse: {
         url: '/api/events',
         audience: 'nurse'  // Only receives nurse directives
@@ -417,7 +418,8 @@ graph TB
     })
     
     // Doctor connects to doctor audience
-    const doctorRegistry = createRegistry({
+    // Doctor instance
+DL.init({
       sse: {
         url: '/api/events',
         audience: 'doctor'  // Only receives doctor directives
@@ -504,7 +506,7 @@ const registry = Verity.createRegistry({
 })
 
 // Register collections
-registry.registerCollection('resources', {
+DL.createCollection('resources', {
   fetch: async (params) => {
     const res = await fetch('/api/resources')
     return res.json()
@@ -525,7 +527,7 @@ async function mutateResource(method, url, data) {
     method,
     headers: {
       'Content-Type': 'application/json',
-      'X-Verity-Client-ID': registry.clientId
+      'X-Verity-Client-ID': DL.clientId()
     },
     body: JSON.stringify(data)
   })
@@ -533,7 +535,7 @@ async function mutateResource(method, url, data) {
   const payload = await res.json()
   
   if (payload.directives) {
-    await registry.applyDirectives(payload.directives)
+    DL.applyDirectives(payload.directives)
   }
   
   return payload

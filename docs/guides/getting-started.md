@@ -129,7 +129,7 @@ npm install verity-dl
 ```
 
 ```javascript
-import { createRegistry } from 'verity-dl'
+import { init, createType, createCollection } from 'verity-dl'
 import { installAlpine } from 'verity-dl/adapters/alpine'
 ```
 
@@ -170,21 +170,23 @@ import 'verity-dl/devtools/devtools.js'
 
 ---
 
-## Step 1: Create Registry
+## Step 1: Initialize Verity
 
-The registry is Verity's core. It manages caching, fetching, and directives.
+Initialize Verity's core data layer with configuration options.
 
 ```html
 <script>
-const registry = Verity.createRegistry({
+DL.init({
   // Optional configuration
   sse: {
+    enabled: true,
     url: '/api/events',      // SSE endpoint for directives
     audience: 'global'        // or user-specific: `user-${userId}`
   },
   memory: {
+    enabled: true,
     maxItemsPerType: 512,
-    collectionTtlMs: 15 * 60 * 1000  // 15 minutes
+    itemEntryTtlMs: 15 * 60 * 1000  // 15 minutes
   }
 })
 </script>
@@ -194,16 +196,22 @@ const registry = Verity.createRegistry({
 
 ## Step 2: Register Collections (Truth-State)
 
-Collections are lists of items from the server.
+Collections represent lists of item IDs from the server.
 
 ```javascript
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params = {}) => {
     const url = new URL('/api/todos', location.origin)
     if (params.status) url.searchParams.set('status', params.status)
     
     const response = await fetch(url)
-    return response.json()  // Should return { items: [...], meta: {...} }
+    const data = await response.json()
+    
+    // Must return { ids: [...], count: number }
+    return {
+      ids: data.ids,        // Array of todo IDs
+      count: data.count     // Total count
+    }
   },
   
   stalenessMs: 60_000  // Cache for 60 seconds
@@ -211,32 +219,50 @@ registry.registerCollection('todos', {
 ```
 
 **Key points:**
-- `fetch` is YOUR function - call your API however you want
+- `fetch` returns **IDs only**, not full items
 - Parameters enable filtering (e.g., `{ status: 'active' }`)
 - Verity caches each parameter combination separately
+- Use framework adapters to fetch full items from IDs
 
 ---
 
 ## Step 3: Register Types (Individual Items)
 
-Types define how to fetch individual records.
+Types define how to fetch individual records by ID.
 
 ```javascript
-registry.registerType('todo', {
-  // Default level
-  fetch: async ({ id }) => {
+DL.createType('todo', {
+  // Fetch single item by ID
+  fetch: async (id) => {
     const response = await fetch(`/api/todos/${id}`)
     return response.json()
   },
   
+  // Optional: Bulk fetch for efficiency
+  bulkFetch: async (ids, level = 'default') => {
+    const response = await fetch('/api/todos/bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids, level })
+    })
+    return response.json()  // Returns array of todos
+  },
+  
   // Optional: Additional detail levels
   levels: {
+    simplified: {
+      fetch: async (id) => {
+        const response = await fetch(`/api/todos/${id}?level=simplified`)
+        return response.json()
+      },
+      checkIfExists: (obj) => obj && obj.title != null
+    },
     detailed: {
-      fetch: async ({ id }) => {
+      fetch: async (id) => {
         const response = await fetch(`/api/todos/${id}?level=detailed`)
         return response.json()
       },
-      checkIfExists: (obj) => 'description' in obj && 'assignee' in obj
+      checkIfExists: (obj) => obj && obj.description != null && obj.assignee != null
     }
   },
   
@@ -245,8 +271,8 @@ registry.registerType('todo', {
 ```
 
 **About levels:**
-- Use levels for different detail amounts (list vs detail view)
-- Conversion graphs minimize refetching
+- Use levels for progressive loading (simplified → detailed)
+- Level conversion graphs minimize refetching
 - [Learn more about Levels →](../concepts/levels-and-conversions.md)
 
 ---
@@ -263,59 +289,79 @@ registry.registerType('todo', {
 </head>
 
 <script>
-const registry = Verity.createRegistry()
-// ... register collections and types ...
+// Initialize Verity
+DL.init({
+  sse: { url: '/api/events' }
+})
 
-VerityAlpine.install(window.Alpine, { registry })
+// Register your data
+DL.createCollection('todos', { /* ... */ })
+DL.createType('todo', { /* ... */ })
 </script>
 
-<!-- Now use in templates -->
-<div x-data="verity.collection('todos')">
-  <template x-if="state.loading">
-    <p>Loading...</p>
-  </template>
-  
-  <template x-for="todo in state.items" :key="todo.id">
-    <div x-text="todo.title"></div>
+<!-- Now use in templates via Alpine.store('lib') -->
+<div x-data="todosPanel()">
+  <template x-for="id in col().data.ids" :key="id">
+    <div x-text="row(id).data?.title"></div>
   </template>
 </div>
+
+<script>
+Alpine.data('todosPanel', () => ({
+  col() {
+    return Alpine.store('lib').col('todos', { params: { status: 'active' } })
+  },
+  row(id) {
+    return Alpine.store('lib').it('todo', id, 'simplified', { silent: true })
+  }
+}))
+</script>
 ```
 
 ### React
 
 ```javascript
-import { createRegistry } from 'verity-dl'
 import { useCollection, useItem } from 'verity-dl/adapters/react'
 
-// Setup registry (do this once, at app root)
-const registry = createRegistry()
-// ... register collections and types ...
+// Initialize once at app root
+DL.init({ sse: { url: '/api/events' } })
+DL.createCollection('todos', { /* ... */ })
+DL.createType('todo', { /* ... */ })
 
 // In components
 function TodoList() {
-  const todos = useCollection('todos')
+  const colRef = useCollection('todos', { params: { status: 'active' } })
   
-  if (todos.state.loading) return <p>Loading...</p>
+  if (colRef.meta.isLoading) return <p>Loading...</p>
+  if (colRef.meta.error) return <p>Error: {colRef.meta.error.message}</p>
   
   return (
     <ul>
-      {todos.state.items.map(todo => (
-        <li key={todo.id}>{todo.title}</li>
+      {colRef.data.ids.map(id => (
+        <TodoItem key={id} id={id} />
       ))}
     </ul>
   )
+}
+
+function TodoItem({ id }) {
+  const itemRef = useItem('todo', id, 'simplified')
+  
+  if (!itemRef.data) return <li>Loading...</li>
+  
+  return <li>{itemRef.data.title}</li>
 }
 ```
 
 ### Vue
 
 ```javascript
-import { createRegistry } from 'verity-dl'
-import { useCollection, useItem } from 'verity-dl/adapters/vue'
+import { useDL } from 'verity-dl/adapters/vue'
 
-// Setup registry (in main.js)
-const registry = createRegistry()
-// ... register collections and types ...
+// Initialize once at app root
+DL.init({ sse: { url: '/api/events' } })
+DL.createCollection('todos', { /* ... */ })
+DL.createType('todo', { /* ... */ })
 
 // In components
 export default {
@@ -350,7 +396,7 @@ async function completeTodo(id) {
   
   // Apply directives from server
   if (payload.directives) {
-    await registry.applyDirectives(payload.directives)
+    DL.applyDirectives(payload.directives)
   }
   
   isCompleting = false
@@ -449,13 +495,13 @@ def complete_todo(todo_id):
 </div>
 
 <script>
-const registry = Verity.createRegistry()
+DL.init()
 
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: () => fetch('/api/todos').then(r => r.json())
 })
 
-registry.registerType('todo', {
+DL.createType('todo', {
   fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json())
 })
 
@@ -469,7 +515,7 @@ window.toggleTodo = async function(id) {
   })
   
   const { directives } = await res.json()
-  await registry.applyDirectives(directives)
+  DL.applyDirectives(directives)
 }
 </script>
 
@@ -485,7 +531,7 @@ window.toggleTodo = async function(id) {
 
 ```javascript
 // Register with parameter support
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params = {}) => {
     const url = new URL('/api/todos', location.origin)
     if (params.status) url.searchParams.set('status', params.status)
@@ -520,10 +566,10 @@ registry.registerCollection('todos', {
 
 ```javascript
 // List view: default level (id, title, status)
-const todo = registry.item('todo', 42)
+const todo = DL.fetchItem('todo', 42)
 
 // Detail view: detailed level (adds description, assignee, comments)
-const todo = registry.item('todo', 42, 'detailed')
+const todo = DL.fetchItem('todo', 42, 'detailed')
 ```
 
 ---
