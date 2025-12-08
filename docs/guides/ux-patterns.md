@@ -170,7 +170,7 @@ Most UI libraries encourage **optimistic updates**—showing users speculative s
     })
     
     const { directives } = await res.json()
-    await registry.applyDirectives(directives)
+    DL.applyDirectives(directives)
     
     this.isSaving = false
     this.saveSuccess = true
@@ -246,7 +246,7 @@ async function toggleComplete(todo) {
     })
     
     const { directives } = await res.json()
-    await registry.applyDirectives(directives)
+    DL.applyDirectives(directives)
     
     this.isToggling = false
   }

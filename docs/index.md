@@ -231,8 +231,8 @@ graph LR
     **Import:**
     
     ```javascript
-    import { createRegistry } from 'verity-dl'
-    import { installAlpine } from 'verity-dl/adapters/alpine'
+    import { init, createType, createCollection } from 'verity-dl/core'
+    import { ensureAlpineStore } from 'verity-dl/adapters/alpine'
     ```
 
 === "React"
@@ -276,19 +276,25 @@ graph LR
 </div>
 
 <script>
-  // Create and configure registry
-  const registry = Verity.createRegistry()
-  
-  registry.registerCollection('todos', {
-    fetch: () => fetch('/api/todos').then(r => r.json())
+  // Initialize Verity
+  DL.init({
+    sse: { url: '/api/events' }
   })
   
-  registry.registerType('todo', {
-    fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json())
+  // Register collections and types
+  DL.createCollection('todos', {
+    fetch: async (params) => {
+      const res = await fetch('/api/todos')
+      return res.json()  // { ids: [...], count: number }
+    }
   })
   
-  // Install Alpine adapter
-  VerityAlpine.install(window.Alpine, { registry })
+  DL.createType('todo', {
+    fetch: async (id) => {
+      const res = await fetch(`/api/todos/${id}`)
+      return res.json()
+    }
+  })
 </script>
 
 </body>

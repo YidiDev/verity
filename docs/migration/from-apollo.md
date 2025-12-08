@@ -72,7 +72,7 @@ This guide helps you transition from Apollo Client to Verity while optionally ke
     import { useCollection } from 'verity-dl/adapters/react'
     
     // In registry setup
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async () => {
         const res = await fetch('/graphql', {
           method: 'POST',
@@ -109,7 +109,7 @@ This guide helps you transition from Apollo Client to Verity while optionally ke
 === "Verity (REST)"
     ```javascript
     // Or switch to REST (simpler)
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: () => fetch('/api/todos').then(r => r.json())
     })
     ```
@@ -147,7 +147,7 @@ This guide helps you transition from Apollo Client to Verity while optionally ke
 
 === "Verity Levels"
     ```javascript
-    registry.registerType('todo', {
+    DL.createType('todo', {
       // Default level (summary)
       fetch: async ({ id }) => {
         const res = await fetch(`/api/todos/${id}`)
@@ -233,7 +233,7 @@ This guide helps you transition from Apollo Client to Verity while optionally ke
       //   { op: 'refresh_collection', name: 'todos' }
       // ]
       
-      await registry.applyDirectives(directives)
+      DL.applyDirectives(directives)
     }
     ```
     
@@ -268,7 +268,7 @@ This guide helps you transition from Apollo Client to Verity while optionally ke
 === "Verity SSE"
     ```javascript
     // Setup (once)
-    const registry = Verity.createRegistry({
+    DL.init({
       sse: {
         url: '/api/events',
         audience: 'global'
@@ -355,9 +355,9 @@ npm install verity-dl
 
 ```javascript
 // src/verity.js
-import { createRegistry } from 'verity-dl'
+import { init, createType, createCollection } from 'verity-dl'
 
-export const registry = createRegistry({
+export DL.init({
   sse: {
     url: '/api/events',
     audience: 'global'
@@ -386,7 +386,7 @@ export const registry = createRegistry({
     **After (Verity + GraphQL):**
     ```javascript
     // Registry setup
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async () => {
         const res = await fetch('/graphql', {
           method: 'POST',
@@ -406,7 +406,7 @@ export const registry = createRegistry({
     
     **Or switch to REST:**
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: () => fetch('/api/todos').then(r => r.json())
     })
     ```
@@ -430,7 +430,7 @@ export const registry = createRegistry({
     
     **After (Verity):**
     ```javascript
-    registry.registerCollection('todos', {
+    DL.createCollection('todos', {
       fetch: async (params = {}) => {
         const url = new URL('/api/todos', location.origin)
         if (params.status) url.searchParams.set('status', params.status)
@@ -462,7 +462,7 @@ export const registry = createRegistry({
     
     **After (Verity):**
     ```javascript
-    registry.registerType('todo', {
+    DL.createType('todo', {
       fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json())
     })
     
@@ -530,7 +530,7 @@ export const registry = createRegistry({
         })
         
         const { directives } = await res.json()
-        await registry.applyDirectives(directives)
+        DL.applyDirectives(directives)
       } finally {
         setIsUpdating(false)
       }
@@ -591,7 +591,7 @@ export const registry = createRegistry({
     **Client (auto-configured):**
     ```javascript
     // Just configure once in registry
-    const registry = Verity.createRegistry({
+    DL.init({
       sse: { url: '/api/events' }
     })
     
@@ -688,7 +688,7 @@ Apollo's normalized cache is powerful but complex. Verity uses a simpler model.
 === "Verity Pattern"
     ```javascript
     // Just use the API
-    const todo = registry.item('todo', todoId)
+    const todo = DL.fetchItem('todo', todoId)
     
     // No manual cache writes
     // Server directives handle updates
@@ -716,7 +716,7 @@ Apollo's normalized cache is powerful but complex. Verity uses a simpler model.
 === "Verity"
     ```javascript
     // Use SSE instead of polling
-    const registry = Verity.createRegistry({
+    DL.init({
       sse: { url: '/api/events' }
     })
     

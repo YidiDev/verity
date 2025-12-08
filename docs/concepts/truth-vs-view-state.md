@@ -93,13 +93,13 @@ Verity enforces a clean boundary:
 ### Truth-State → Managed by Verity
 ```javascript
 // Verity owns truth-state
-const registry = createRegistry()
+DL.init()
 
-registry.registerCollection('users', {
+DL.createCollection('users', {
   fetch: () => fetch('/api/users').then(r => r.json())
 })
 
-registry.registerType('user', {
+DL.createType('user', {
   fetch: ({ id }) => fetch(`/api/users/${id}`).then(r => r.json())
 })
 
@@ -385,7 +385,7 @@ Let's walk through a complete example:
 
 ```javascript
 // 1. Register truth-state with Verity
-registry.registerCollection('invoices', {
+DL.createCollection('invoices', {
   fetch: async (params = {}) => {
     const url = new URL('/api/invoices', location.origin)
     if (params.status) url.searchParams.set('status', params.status)

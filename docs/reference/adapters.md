@@ -60,12 +60,12 @@ Browser-native adapter for Alpine.js. Perfect for HTML-first applications.
 
 <script>
   // Create registry
-  const registry = Verity.createRegistry({
+  DL.init({
     sse: { url: '/api/events', audience: 'global' }
   })
   
   // Register types
-  registry.registerCollection('todos', {
+  DL.createCollection('todos', {
     fetch: async (params) => {
       const url = new URL('/api/todos', window.location.origin)
       if (params.status) url.searchParams.set('status', params.status)
@@ -208,16 +208,16 @@ npm install verity-dl
 
 ```javascript
 // App.jsx
-import { createRegistry } from 'verity-dl/core'
+import { init, createType, createCollection } from 'verity-dl/core'
 import { VerityProvider } from 'verity-dl/adapters/react'
 
 // Create registry
-const registry = createRegistry({
+DL.init({
   sse: { url: '/api/events', audience: 'global' }
 })
 
 // Register types
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params) => {
     const url = new URL('/api/todos', window.location.origin)
     if (params.status) url.searchParams.set('status', params.status)
@@ -346,7 +346,7 @@ function TodoList() {
     const data = await res.json()
     
     if (data.directives) {
-      await registry.applyDirectives(data.directives)
+      DL.applyDirectives(data.directives)
     }
   }
   
@@ -424,17 +424,17 @@ npm install verity-dl
 ```javascript
 // main.js
 import { createApp } from 'vue'
-import { createRegistry } from 'verity-dl/core'
+import { init, createType, createCollection } from 'verity-dl/core'
 import { createVerityVuePlugin } from 'verity-dl/adapters/vue'
 import App from './App.vue'
 
 // Create registry
-const registry = createRegistry({
+DL.init({
   sse: { url: '/api/events', audience: 'global' }
 })
 
 // Register types
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params) => {
     const url = new URL('/api/todos', window.location.origin)
     if (params.status) url.searchParams.set('status', params.status)
@@ -535,7 +535,7 @@ const toggleTodo = async (todo) => {
   const data = await res.json()
   
   if (data.directives) {
-    await registry.applyDirectives(data.directives)
+    DL.applyDirectives(data.directives)
   }
 }
 </script>
@@ -617,14 +617,14 @@ npm install verity-dl
 
 ```javascript
 // stores.js
-import { createRegistry } from 'verity-dl/core'
+import { init, createType, createCollection } from 'verity-dl/core'
 
-export const registry = createRegistry({
+export DL.init({
   sse: { url: '/api/events', audience: 'global' }
 })
 
 // Register types
-registry.registerCollection('todos', {
+DL.createCollection('todos', {
   fetch: async (params) => {
     const url = new URL('/api/todos', window.location.origin)
     if (params.status) url.searchParams.set('status', params.status)
@@ -711,7 +711,7 @@ async function toggleTodo(todo) {
   const data = await res.json()
   
   if (data.directives) {
-    await registry.applyDirectives(data.directives)
+    DL.applyDirectives(data.directives)
   }
 }
 </script>
@@ -812,7 +812,7 @@ const updateTodo = async (id, data) => {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-Verity-Client-ID': registry.clientId
+      'X-Verity-Client-ID': DL.clientId()
     },
     body: JSON.stringify(data)
   })
@@ -820,7 +820,7 @@ const updateTodo = async (id, data) => {
   const payload = await res.json()
   
   if (payload.directives) {
-    await registry.applyDirectives(payload.directives)
+    DL.applyDirectives(payload.directives)
   }
   
   return payload

@@ -40,9 +40,9 @@ Verity's state model is built on a simple philosophy:
 </head>
 
 <script>
-const registry = Verity.createRegistry()
+DL.init()
 
-registry.registerType('user', {
+DL.createType('user', {
   fetch: async ({ id }) => {
     const response = await fetch(`/api/users/${id}`)
     return response.json()
@@ -84,7 +84,7 @@ registry.registerType('user', {
 Cached data goes stale after a configured time:
 
 ```javascript
-registry.registerType('user', {
+DL.createType('user', {
   fetch: async ({ id }) => {
     const response = await fetch(`/api/users/${id}`)
     return response.json()
@@ -108,7 +108,7 @@ registry.registerType('user', {
 ### Basic Collection Registration
 
 ```javascript
-registry.registerCollection('users', {
+DL.createCollection('users', {
   fetch: async () => {
     const response = await fetch('/api/users')
     return response.json()  // Should return { items: [...], meta: {...} }
@@ -160,7 +160,7 @@ registry.registerCollection('users', {
 The killer feature: cache multiple "slices" of the same collection.
 
 ```javascript
-registry.registerCollection('users', {
+DL.createCollection('users', {
   fetch: async (params = {}) => {
     const url = new URL('/api/users', location.origin)
     
@@ -205,7 +205,7 @@ Each combination is cached independently with its own staleness timer.
 When you access truth-state, Verity returns a **reference** (ref):
 
 ```javascript
-const userRef = registry.item('user', 123)
+const userRef = DL.fetchItem('user', 123)
 
 // Reference structure
 {
@@ -227,7 +227,7 @@ const userRef = registry.item('user', 123)
 ### Collection References
 
 ```javascript
-const usersRef = registry.collection('users')
+const usersRef = DL.fetchCollection('users')
 
 // Collection reference structure
 {
@@ -248,7 +248,7 @@ const usersRef = registry.collection('users')
 
 ```javascript
 // No cache, triggers fetch
-const user = registry.item('user', 123)
+const user = DL.fetchItem('user', 123)
 // user.meta.loading === true
 // user.data === null
 
@@ -261,7 +261,7 @@ const user = registry.item('user', 123)
 
 ```javascript
 // Within stalenessMs, uses cache
-const user = registry.item('user', 123)
+const user = DL.fetchItem('user', 123)
 // user.meta.loading === false  ← No fetch!
 // user.data === { id: 123, name: "Alice", ... }
 ```
@@ -270,7 +270,7 @@ const user = registry.item('user', 123)
 
 ```javascript
 // After stalenessMs expires
-const user = registry.item('user', 123)
+const user = DL.fetchItem('user', 123)
 // user.meta.loading === true  ← Refetch triggered
 // user.data === { id: 123, name: "Alice", ... }  ← Old data still visible
 
@@ -322,7 +322,7 @@ async function updateUser(id, data) {
   //   ]
   // }
   
-  await registry.applyDirectives(payload.directives)
+  DL.applyDirectives(payload.directives)
 }
 ```
 
@@ -342,7 +342,7 @@ async function updateUser(id, data) {
 Sometimes you need different amounts of detail for the same entity.
 
 ```javascript
-registry.registerType('user', {
+DL.createType('user', {
   // Default level: minimal data
   fetch: async ({ id }) => {
     const response = await fetch(`/api/users/${id}`)
@@ -394,7 +394,7 @@ Long-lived apps can accumulate cached data. Verity includes automatic cleanup.
 ### Default Behavior
 
 ```javascript
-const registry = Verity.createRegistry()
+DL.init()
 // Defaults:
 // - Sweep every 60 seconds
 // - Keep max 512 items per type
@@ -405,7 +405,7 @@ const registry = Verity.createRegistry()
 ### Custom Configuration
 
 ```javascript
-const registry = Verity.createRegistry({
+DL.init({
   memory: {
     enabled: true,
     sweepIntervalMs: 120_000,         // Sweep every 2 minutes
@@ -456,13 +456,13 @@ Press `Ctrl/Cmd + Shift + D` or append `?devtools=1` to URL.
 
 ```javascript
 // Frequently changing data: short staleness
-registry.registerCollection('realtime_prices', {
+DL.createCollection('realtime_prices', {
   fetch: () => fetch('/api/prices').then(r => r.json()),
   stalenessMs: 5_000  // 5 seconds
 })
 
 // Rarely changing data: long staleness
-registry.registerType('user_profile', {
+DL.createType('user_profile', {
   fetch: ({ id }) => fetch(`/api/users/${id}`).then(r => r.json()),
   stalenessMs: 10 * 60 * 1000  // 10 minutes
 })
@@ -543,7 +543,7 @@ async function toggleUserActive(id) {
   const res = await fetch(`/api/users/${id}/toggle`, { method: 'PUT' })
   const { directives } = await res.json()
   
-  await registry.applyDirectives(directives)  // Server tells us new state
+  DL.applyDirectives(directives)  // Server tells us new state
   isToggling = false
 }
 ```
@@ -552,7 +552,7 @@ async function toggleUserActive(id) {
 
 ```javascript
 // Register once with parameter support
-registry.registerCollection('products', {
+DL.createCollection('products', {
   fetch: async (params = {}) => {
     const url = new URL('/api/products', location.origin)
     if (params.category) url.searchParams.set('category', params.category)

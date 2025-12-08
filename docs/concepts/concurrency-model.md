@@ -81,9 +81,9 @@ function fetchCollection(name, params) {
 
 ```javascript
 // User rapidly clicks filters
-const ref = registry.collection('todos', { status: 'active' })    // queryId: 1
-const ref = registry.collection('todos', { status: 'completed' }) // queryId: 2
-const ref = registry.collection('todos', { status: 'active' })    // queryId: 3
+const ref = DL.fetchCollection('todos', { status: 'active' })    // queryId: 1
+const ref = DL.fetchCollection('todos', { status: 'completed' }) // queryId: 2
+const ref = DL.fetchCollection('todos', { status: 'active' })    // queryId: 3
 
 // Response order: 3, 1, 2
 // Response 3 arrives → applied (activeQueryId === 3) ✓
@@ -134,9 +134,9 @@ function fetchItem(type, id, level) {
 
 ```javascript
 // Three components request same item
-const item1 = registry.item('todo', 42, 'detailed')  // Starts fetch
-const item2 = registry.item('todo', 42, 'detailed')  // Reuses same fetch
-const item3 = registry.item('todo', 42, 'detailed')  // Reuses same fetch
+const item1 = DL.fetchItem('todo', 42, 'detailed')  // Starts fetch
+const item2 = DL.fetchItem('todo', 42, 'detailed')  // Reuses same fetch
+const item3 = DL.fetchItem('todo', 42, 'detailed')  // Reuses same fetch
 
 // Only 1 network request!
 // All three get the same data when it resolves
@@ -182,8 +182,8 @@ function fetchCollection(name, params) {
 
 ```javascript
 // User triggers refetch while fetch is in progress
-registry.collection('todos').refresh()  // Fetch 1 starts
-registry.collection('todos').refresh()  // Queued until fetch 1 completes
+DL.fetchCollection('todos').refresh()  // Fetch 1 starts
+DL.fetchCollection('todos').refresh()  // Queued until fetch 1 completes
 // Fetch 1 completes
 // Fetch 2 starts automatically
 ```
@@ -212,7 +212,7 @@ Verity distinguishes between **background hydration** and **user-visible refresh
 </head>
 
 <script>
-const registry = Verity.createRegistry()
+DL.init()
 VerityAlpine.install(window.Alpine, { registry })
 </script>
 
@@ -262,19 +262,19 @@ For collections that load many items, Verity supports **bulk item fetching** to 
 
 ```javascript
 // Collection returns 100 IDs
-const todos = registry.collection('todos')
+const todos = DL.fetchCollection('todos')
 // → ['id-1', 'id-2', ..., 'id-100']
 
 // Rendering 100 rows triggers 100 item fetches
 todos.items.forEach(id => {
-  registry.item('todo', id, 'summary')  // 100 requests!
+  DL.fetchItem('todo', id, 'summary')  // 100 requests!
 })
 ```
 
 ### With Bulk Fetching
 
 ```javascript
-registry.registerType('todo', {
+DL.createType('todo', {
   fetch: ({ id }) => fetch(`/api/todos/${id}`).then(r => r.json()),
   
   // Add bulk fetcher
@@ -314,7 +314,7 @@ Long-lived dashboards can accumulate cached data. Verity includes a background s
 </head>
 
 <script>
-const registry = Verity.createRegistry({
+DL.init({
   memory: {
     enabled: true,
     sweepIntervalMs: 60_000,           // Run every 60 seconds
@@ -339,10 +339,10 @@ const registry = Verity.createRegistry({
 
 ```javascript
 // Every access updates lastUsedAt
-registry.collection('todos', { status: 'active' })
+DL.fetchCollection('todos', { status: 'active' })
 // → collections.get('todos:status=active').lastUsedAt = Date.now()
 
-registry.item('todo', 42, 'detailed')
+DL.fetchItem('todo', 42, 'detailed')
 // → types.get('todo').items.get(42).levels.get('detailed').lastUsedAt = Date.now()
 ```
 
@@ -355,8 +355,8 @@ registry.item('todo', 42, 'detailed')
 Every client generates a unique ID on load:
 
 ```javascript
-const registry = createRegistry()
-console.log(registry.clientId)  // "client-abc-123-def"
+DL.init()
+console.log(DL.clientId())  // "client-abc-123-def"
 ```
 
 **Usage:** Tag mutations with client ID so SSE can skip echoing back.
@@ -372,7 +372,7 @@ async function updateTodo(id, data) {
   })
   
   const { directives } = await res.json()
-  await registry.applyDirectives(directives)
+  DL.applyDirectives(directives)
 }
 ```
 
@@ -449,7 +449,7 @@ lastSeq = {
 **Configuration:**
 
 ```javascript
-const registry = createRegistry({
+DL.init({
   sse: {
     url: '/api/events',
     resyncOnGap: true,                // Default: true
@@ -495,10 +495,10 @@ test('stale response does not overwrite newer state', async () => {
   })
   
   // Start first request
-  registry.collection('todos', { status: 'active' })
+  DL.fetchCollection('todos', { status: 'active' })
   
   // Start second request (supersedes first)
-  registry.collection('todos', { status: 'completed' })
+  DL.fetchCollection('todos', { status: 'completed' })
   
   // Resolve in reverse order
   resolveSecond({ items: ['completed-1'] })
@@ -508,7 +508,7 @@ test('stale response does not overwrite newer state', async () => {
   await nextTick()
   
   // Should show 'completed', not 'active'
-  const ref = registry.collection('todos')
+  const ref = DL.fetchCollection('todos')
   expect(ref.data.items).toEqual(['completed-1'])
 })
 ```
@@ -522,9 +522,9 @@ test('identical concurrent requests share promise', async () => {
   })
   
   // Fire 3 requests simultaneously
-  registry.item('todo', 42, 'detailed')
-  registry.item('todo', 42, 'detailed')
-  registry.item('todo', 42, 'detailed')
+  DL.fetchItem('todo', 42, 'detailed')
+  DL.fetchItem('todo', 42, 'detailed')
+  DL.fetchItem('todo', 42, 'detailed')
   
   await nextTick()
   
@@ -539,7 +539,7 @@ test('identical concurrent requests share promise', async () => {
 test('missing SSE sequence triggers resync', async () => {
   const resyncSpy = vi.fn()
   
-  const registry = createRegistry({
+  DL.init({
     sse: {
       onResync: resyncSpy
     }
