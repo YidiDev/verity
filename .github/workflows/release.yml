@@ -28,12 +28,19 @@ jobs:
       - name: Update package.json version
         run: |
           VERSION=${GITHUB_REF#refs/tags/v}
-          npm version $VERSION --no-git-tag-version
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add package.json
-          git commit -m "Update version to $VERSION"
-          git push
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          
+          if [ "$CURRENT_VERSION" != "$VERSION" ]; then
+            echo "Updating version from $CURRENT_VERSION to $VERSION"
+            npm version $VERSION --no-git-tag-version
+            git config --global user.name 'github-actions[bot]'
+            git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+            git add package.json
+            git commit -m "Update version to $VERSION"
+            git push
+          else
+            echo "Version already set to $VERSION, skipping update"
+          fi
 
       - name: Update npm
         run: npm install -g npm@latest
