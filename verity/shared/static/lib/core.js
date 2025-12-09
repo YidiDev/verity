@@ -1241,6 +1241,11 @@ function isItemLoading(typeName, id, levelName = null) {
     return G.inFlightItm.has(key);
 }
 
+function isCollectionLoading(name, params) {
+    const key = collectionKey(name, params);
+    return G.inFlightCol.has(key);
+}
+
 function hasAnyInFlightRequests() {
     return G.inFlightItm.size > 0 || G.inFlightCol.size > 0;
 }
@@ -1516,7 +1521,8 @@ async function _startCollectionFetch(name, { force = false, params = undefined }
 
     if (G.inFlightCol.has(inFlightKey)) {
         const bucket = G.inFlightCol.get(inFlightKey);
-        if (!ref.meta.isLoading) assignRef(ref, { meta: { ...ref.meta, isLoading: true, error: null } });
+        // Don't update isLoading here - it will be synced with in-flight state if needed
+        // Setting isLoading=true without activeQueryId breaks the invariant
         emitLifecycle("collection:fetch:coalesced", { name, params: snapshot, key: inFlightKey });
         return bucket.promise;
     }
@@ -1572,8 +1578,8 @@ async function _startItemFetch(typeName, id, levelName, { loud = false, force = 
     // If a request for this item/level is already in-flight, coalesce.
     if (G.inFlightItm.has(key)) {
         const bucket = G.inFlightItm.get(key);
-        // If a later caller is loud, reflect spinner even though we're reusing the same request
-        if (loud && !ref.meta.isLoading) assignRef(ref, { meta: { ...ref.meta, isLoading: true } });
+        // Don't update isLoading here - it will be synced at the end of fetchItem
+        // Setting isLoading=true without activeQueryId breaks the invariant (isLoading=true + activeQueryId=null)
         emitLifecycle("item:fetch:coalesced", { ...eventBase, loud: !!loud, key });
         return bucket.promise;
     }
@@ -1699,6 +1705,13 @@ function fetchCollection(name, opts = {}) {
     ref.meta.lastUsedAt = nowISO();
     scheduleMemorySweep();
     _startCollectionFetch(name, opts);
+    
+    // Set isLoading based on actual in-flight state (source of truth)
+    const actuallyLoading = isCollectionLoading(name, opts.params);
+    if (ref.meta.isLoading !== actuallyLoading) {
+        assignRef(ref, { meta: { ...ref.meta, isLoading: actuallyLoading } });
+    }
+    
     return ref;
 }
 
@@ -2139,6 +2152,7 @@ const DLCore = {
     disconnectSse,
     ingestDirectiveEnvelope,
     isItemLoading,
+    isCollectionLoading,
     hasAnyInFlightRequests,
 };
 
@@ -2164,6 +2178,7 @@ if (typeof exports !== "undefined") {
     exports.disconnectSse = disconnectSse;
     exports.ingestDirectiveEnvelope = ingestDirectiveEnvelope;
     exports.isItemLoading = isItemLoading;
+    exports.isCollectionLoading = isCollectionLoading;
     exports.hasAnyInFlightRequests = hasAnyInFlightRequests;
 }
 
