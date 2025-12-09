@@ -1701,8 +1701,7 @@ function fetchItem(typeName, id, levelName = null, opts = {}) {
     const ref = ensureItemRef(typeName, id);
     ref.meta.lastUsedAt = nowISO();
     scheduleMemorySweep();
-    // reflect spinner only if caller is loud
-    if (!opts.silent && !ref.meta.isLoading) assignRef(ref, { meta: { ...ref.meta, isLoading: true, error: null } });
+    // Don't set isLoading here - let _startItemFetch handle it based on whether fetch is actually needed
     _startItemFetch(typeName, id, levelName, { loud: !opts.silent, force: !!opts.force });
     return ref;
 }
