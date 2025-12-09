@@ -1707,10 +1707,8 @@ function fetchCollection(name, opts = {}) {
     _startCollectionFetch(name, opts);
     
     // Set isLoading based on actual in-flight state (source of truth)
-    const actuallyLoading = isCollectionLoading(name, opts.params);
-    if (ref.meta.isLoading !== actuallyLoading) {
-        assignRef(ref, { meta: { ...ref.meta, isLoading: actuallyLoading } });
-    }
+    // DO NOT sync here - it creates a race condition where isLoading=true but activeQueryId=null
+    // The _startCollectionFetch function already handles setting isLoading correctly
     
     return ref;
 }
@@ -1723,10 +1721,9 @@ function fetchItem(typeName, id, levelName = null, opts = {}) {
     _startItemFetch(typeName, id, levelName, { loud: !opts.silent, force: !!opts.force });
     
     // Set isLoading based on actual in-flight state (source of truth)
-    const actuallyLoading = isItemLoading(typeName, id, levelName);
-    if (ref.meta.isLoading !== actuallyLoading) {
-        assignRef(ref, { meta: { ...ref.meta, isLoading: actuallyLoading } });
-    }
+    // DO NOT sync here - it creates a race condition where isLoading=true but activeQueryId=null
+    // because the promise might still be in G.inFlightItm even after applyFetchedLevel runs
+    // The _startItemFetch function already handles setting isLoading correctly
     
     return ref;
 }
