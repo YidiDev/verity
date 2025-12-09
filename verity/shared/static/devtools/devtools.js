@@ -1625,10 +1625,18 @@
             hide() {
                 setHidden(true);
             },
+            toggle() {
+                if (layout.hidden) {
+                    this.show();
+                } else {
+                    this.hide();
+                }
+            },
             destroy() {
                 try { lifecycleUnsubscribe(); } catch { }
                 try { changeUnsubscribe(); } catch { }
                 window.removeEventListener("resize", handleResize);
+                window.removeEventListener("keydown", handleGlobalKeydown);
                 if (layout.detached) {
                     dock();
                 }
@@ -1639,6 +1647,15 @@
                 delete window.__VERITY_DL_DEVTOOLS__;
             },
         };
+
+        const handleGlobalKeydown = (event) => {
+            if (!event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
+            if (event.key && event.key.toLowerCase() === 'v') {
+                event.preventDefault();
+                window.__VERITY_DL_DEVTOOLS__.toggle();
+            }
+        };
+        window.addEventListener("keydown", handleGlobalKeydown);
     };
 
     if (document.readyState === "loading") {

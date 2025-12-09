@@ -66,7 +66,7 @@ import 'verity-dl/devtools/devtools.js'
 ### Opening/Closing Devtools
 
 **Keyboard Shortcuts:**
-- **`Ctrl+Shift+D`** (Windows/Linux) or **`Cmd+Shift+D`** (Mac) - Toggle visibility
+- **`Ctrl+Shift+V`** (Windows/Linux) or **`Cmd+Shift+V`** (Mac) - Toggle visibility
 - **`Escape`** - Hide devtools (when focused)
 
 **UI Controls:**
@@ -448,7 +448,7 @@ Performance
 
 | Shortcut | Action |
 |----------|--------|
-| `Ctrl+Shift+D` / `Cmd+Shift+D` | Toggle devtools visibility |
+| `Ctrl+Shift+V` / `Cmd+Shift+V` | Toggle devtools visibility |
 | `Escape` | Hide devtools |
 | `Ctrl+K` / `Cmd+K` | Clear events timeline |
 | `Ctrl+P` / `Cmd+P` | Pause/Resume events |

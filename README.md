@@ -162,7 +162,7 @@ Add the visual debugging overlay to watch truth-state, directives, and SSE event
 <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.js"></script>
 ```
 
-**Usage:** Press `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac) to toggle the devtools overlay.
+**Usage:** Press `Ctrl+Shift+V` (or `Cmd+Shift+V` on Mac) to toggle the devtools overlay.
 
 [Complete Devtools Guide →](https://verity.yidi.sh/guides/getting-started.html#debugging-with-devtools)
 

@@ -599,7 +599,7 @@ DL.init({
    ```
 
 4. **Check SSE connection (for push path):**
-   - Open devtools: `Ctrl+Shift+D`
+   - Open devtools: `Ctrl+Shift+V`
    - Go to **SSE panel**
    - Check connection status (should be green ✓)
    - Check if messages are arriving
@@ -660,7 +660,7 @@ await registry.resync()
 ```
 
 **Use devtools to inspect:**
-- Open devtools: `Ctrl+Shift+D`
+- Open devtools: `Ctrl+Shift+V`
 - Go to **Truth panel**
 - Check **stale** indicator (yellow dot = stale)
 
@@ -706,7 +706,7 @@ await registry.resync()
    ```
 
 4. **Use devtools:**
-   - Open devtools: `Ctrl+Shift+D`
+   - Open devtools: `Ctrl+Shift+V`
    - Go to **SSE panel**
    - Check connection status
    - Check error messages

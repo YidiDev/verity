@@ -446,7 +446,7 @@ Inspect Verity's internal state in real-time:
 - **SSE:** Connection status and sequence tracking
 - **Memory:** Cache size and sweeper activity
 
-Press `Ctrl/Cmd + Shift + D` or append `?devtools=1` to URL.
+Press `Ctrl/Cmd + Shift + V` or append `?devtools=1` to URL.
 
 ---
 

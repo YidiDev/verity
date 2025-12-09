@@ -449,7 +449,7 @@ A **visual debugging overlay** that shows live truth-state, events, directives, 
 <script src=".../devtools.js"></script>
 ```
 
-**Toggle:** `Ctrl+Shift+D` (or `Cmd+Shift+D` on Mac)
+**Toggle:** `Ctrl+Shift+V` (or `Cmd+Shift+V` on Mac)
 
 **Panels:**
 - **Truth:** Live cache snapshot
