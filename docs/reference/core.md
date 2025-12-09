@@ -1028,6 +1028,123 @@ await updateInvoice(42, { status: 'paid' })
 
 ---
 
+## `isItemLoading(typeName, id, level)`
+
+Checks if a specific item is currently being fetched (has an in-flight request). This is the **source of truth** for loading state, checking the actual in-flight request map rather than relying on the `isLoading` flag.
+
+### Signature
+
+```typescript
+function isItemLoading(
+  typeName: string,
+  id: any,
+  level?: string | null
+): boolean
+```
+
+### Parameters
+
+- **`typeName`**: The type name (registered via `createType`)
+- **`id`**: The item identifier
+- **`level`** (optional): The level name (null for default level)
+
+### Returns: boolean
+
+Returns `true` if there is an active fetch in progress for this exact item/level combination, `false` otherwise.
+
+### Example
+
+```javascript
+// Check if user is loading
+const loading = DL.isItemLoading('user', 123)
+console.log('User 123 is loading:', loading)
+
+// Check specific level
+const detailsLoading = DL.isItemLoading('user', 123, 'detailed')
+console.log('User 123 details loading:', detailsLoading)
+
+// Use in reactive getters for accurate loading state
+get isLoadingAuth() {
+  return DL.isItemLoading('me', 'current')
+}
+```
+
+### Why Use This Instead of `ref.meta.isLoading`?
+
+The `isLoading` flag can sometimes be out of sync with reality due to timing issues with reactive frameworks. `isItemLoading()` checks the **actual in-flight request map**, which is the single source of truth.
+
+```javascript
+// ❌ May be inaccurate with reactive frameworks
+get isLoadingAuth() {
+  const meRef = Alpine.store('lib').it('me', 'current')
+  return meRef.meta.isLoading
+}
+
+// ✅ Always accurate - checks actual in-flight requests
+get isLoadingAuth() {
+  return DL.isItemLoading('me', 'current')
+}
+```
+
+---
+
+## `hasAnyInFlightRequests()`
+
+Checks if there are ANY in-flight requests (items or collections) across the entire application. Useful for global loading indicators.
+
+### Signature
+
+```typescript
+function hasAnyInFlightRequests(): boolean
+```
+
+### Returns: boolean
+
+Returns `true` if there are any active fetches in progress, `false` if all requests have completed.
+
+### Example
+
+```javascript
+// Global loading indicator
+const showGlobalSpinner = DL.hasAnyInFlightRequests()
+
+// Alpine.js example
+Alpine.store('app', {
+  get isLoading() {
+    return DL.hasAnyInFlightRequests()
+  }
+})
+
+// React example
+function GlobalLoadingIndicator() {
+  const [isLoading, setIsLoading] = React.useState(false)
+  
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setIsLoading(DL.hasAnyInFlightRequests())
+    }, 100)
+    
+    return () => clearInterval(interval)
+  }, [])
+  
+  return isLoading ? <Spinner /> : null
+}
+```
+
+### Use in DevTools
+
+Both methods are also exposed in the devtools snapshot:
+
+```javascript
+const snapshot = DL.devtools()
+console.log('In-flight items:', snapshot.inFlight.items)
+console.log('In-flight collections:', snapshot.inFlight.collections)
+console.log('Total in-flight:', snapshot.inFlight.totalCount)
+console.log('Has any in-flight:', snapshot.inFlight.hasAnyInFlight)
+```
+
+---
+
 ## Summary
 
 **Core Methods:**
@@ -1040,10 +1157,13 @@ await updateInvoice(42, { status: 'paid' })
 | `fetchItem()` | Fetch single item and get reactive reference |
 | `fetchCollection()` | Fetch collection IDs and get reactive reference |
 | `applyDirectives()` | Apply server directives to invalidate cache |
+| `isItemLoading()` | Check if specific item has in-flight request (source of truth) |
+| `hasAnyInFlightRequests()` | Check if any requests are in-flight globally |
 | `onChange()` | Subscribe to state changes |
 | `onLifecycle()` | Subscribe to lifecycle events |
 | `clientId()` | Get unique client identifier |
 | `state()` | Get state snapshot (debugging) |
+| `devtools()` | Get detailed devtools snapshot |
 
 **Configuration:**
 

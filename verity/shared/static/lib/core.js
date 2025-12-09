@@ -1236,6 +1236,15 @@ function itemKey(typeName, id, levelName) {
     return `${typeName}:${id}:${toLevelKey(levelName)}`;
 }
 
+function isItemLoading(typeName, id, levelName = null) {
+    const key = itemKey(typeName, id, levelName);
+    return G.inFlightItm.has(key);
+}
+
+function hasAnyInFlightRequests() {
+    return G.inFlightItm.size > 0 || G.inFlightCol.size > 0;
+}
+
 function applyFetchedLevel(T, typeName, id, ref, sourceLevelKey, data, timestamp, qid = null, options = {}) {
     let nextData = { ...(ref.data || {}), ...(data || {}) };
     const nextLevelStamps = { ...ref.meta.levelStamps };
@@ -1698,8 +1707,14 @@ function fetchItem(typeName, id, levelName = null, opts = {}) {
     const ref = ensureItemRef(typeName, id);
     ref.meta.lastUsedAt = nowISO();
     scheduleMemorySweep();
-    // Don't set isLoading here - let _startItemFetch handle it based on whether fetch is actually needed
     _startItemFetch(typeName, id, levelName, { loud: !opts.silent, force: !!opts.force });
+    
+    // Set isLoading based on actual in-flight state (source of truth)
+    const actuallyLoading = isItemLoading(typeName, id, levelName);
+    if (ref.meta.isLoading !== actuallyLoading) {
+        assignRef(ref, { meta: { ...ref.meta, isLoading: actuallyLoading } });
+    }
+    
     return ref;
 }
 
@@ -2038,6 +2053,8 @@ function devtools() {
         inFlight: {
             collections: inFlightCollections,
             items: inFlightItems,
+            totalCount: G.inFlightCol.size + G.inFlightItm.size,
+            hasAnyInFlight: hasAnyInFlightRequests(),
         },
         directiveRegistry: {
             ttlMs: G.directiveRegistry.ttlMs,
@@ -2121,6 +2138,8 @@ const DLCore = {
     disconnectDirectiveSource,
     disconnectSse,
     ingestDirectiveEnvelope,
+    isItemLoading,
+    hasAnyInFlightRequests,
 };
 
 // ES MODULE EXPORTS (for modern bundlers and ES imports)
@@ -2144,6 +2163,8 @@ if (typeof exports !== "undefined") {
     exports.disconnectDirectiveSource = disconnectDirectiveSource;
     exports.disconnectSse = disconnectSse;
     exports.ingestDirectiveEnvelope = ingestDirectiveEnvelope;
+    exports.isItemLoading = isItemLoading;
+    exports.hasAnyInFlightRequests = hasAnyInFlightRequests;
 }
 
 // UMD/Browser compatibility (for script tag loading)
