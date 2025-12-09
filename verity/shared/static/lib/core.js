@@ -1596,11 +1596,11 @@ async function _startItemFetch(typeName, id, levelName, { loud = false, force = 
 
     const qid = genQid();
     const nextActiveLevels = setActiveLevelQueryId(ref.meta, canonicalLevel, qid);
-    // Spin if loud; otherwise keep current spinner state
+    // Always set activeQueryId for query matching, but only set isLoading if loud
     if (loud) {
         assignRef(ref, { meta: { ...ref.meta, isLoading: true, error: null, activeQueryId: qid, activeLevelQueryIds: nextActiveLevels } });
     } else {
-        assignRef(ref, { meta: { ...ref.meta, error: null, activeLevelQueryIds: nextActiveLevels } });
+        assignRef(ref, { meta: { ...ref.meta, error: null, activeQueryId: qid, activeLevelQueryIds: nextActiveLevels } });
     }
 
     const fallbackFetcher = levelCfg ? levelCfg.fetch : T.fetch;
