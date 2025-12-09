@@ -1296,21 +1296,6 @@ function applyFetchedLevel(T, typeName, id, ref, sourceLevelKey, data, timestamp
         isLoading: false,  // Fetch completed successfully, clear loading state
     };
     const nextMeta = finalizeItemMeta(ref, sourceLevelKey, qid, overrides, options);
-    
-    // Debug logging
-    if (nextMeta.isLoading === true) {
-        console.error('[VERITY BUG] finalizeItemMeta returned isLoading=true after fetch completed!', {
-            typeName,
-            id,
-            sourceLevelKey,
-            qid,
-            'ref.meta.activeQueryId': ref.meta.activeQueryId,
-            'ref.meta.isLoading': ref.meta.isLoading,
-            'nextMeta.isLoading': nextMeta.isLoading,
-            'nextMeta.activeQueryId': nextMeta.activeQueryId,
-            overrides
-        });
-    }
 
     assignRef(ref, { data: nextData, meta: nextMeta });
 }
