@@ -1053,7 +1053,11 @@ function finalizeItemMeta(ref, canonicalLevel, qid, overrides = {}, { force = fa
     };
 
     if (!Object.prototype.hasOwnProperty.call(overrides, "isLoading")) {
-        if (matchedActiveQuery || next.activeQueryId == null) {
+        // If we have data, we're definitely not loading
+        // This handles cases where coalesced requests may have mismatched query IDs
+        if (ref.data != null) {
+            next.isLoading = false;
+        } else if (matchedActiveQuery || next.activeQueryId == null) {
             next.isLoading = false;
         }
     }
