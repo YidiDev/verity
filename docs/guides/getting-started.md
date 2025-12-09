@@ -158,7 +158,7 @@ import 'verity-dl/devtools/devtools.js'
 ```
 
 **Usage:**
-- **`Ctrl+Shift+D`** (or `Cmd+Shift+D` on Mac) to toggle devtools
+- **`Ctrl+Shift+V`** (or `Cmd+Shift+V` on Mac) to toggle devtools
 - View live truth-state in the **Truth panel**
 - Watch directive/fetch events in the **Events panel**
 - Monitor SSE connection in the **SSE panel**

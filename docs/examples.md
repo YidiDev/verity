@@ -616,7 +616,7 @@ export FLASK_DEBUG=1
    <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.js"></script>
    ```
 3. Reload the page
-4. Press `Ctrl+Shift+D` to open devtools
+4. Press `Ctrl+Shift+V` to open devtools
 
 ---
 
@@ -683,7 +683,7 @@ lsof -i :5000  # On macOS/Linux
 
 2. Open browser devtools → Network tab → Look for `/api/events` with type `eventsource`
 
-3. Check Verity devtools (`Ctrl+Shift+D`) → SSE panel
+3. Check Verity devtools (`Ctrl+Shift+V`) → SSE panel
 
 ### Updates not appearing
 
