@@ -194,6 +194,70 @@ Wrapper for multiple directives (rare, mostly for consistency).
 - For explicit grouping
 - For conditional invalidation on client
 
+### `force_reload_page`
+
+Forces a complete page reload, discarding all client-side state.
+
+```javascript
+{
+  "op": "force_reload_page",
+  "hard": true  // optional: force hard reload (bypasses cache)
+}
+```
+
+**When to use:**
+- After critical system configuration changes that affect the entire application
+- After user role/permission changes requiring complete UI reset
+- After server-side schema migrations that change data structure
+- When client state may be corrupted and needs emergency reset
+- As an "escape hatch" for synchronization issues that can't be resolved with refresh directives
+
+**How it works:**
+- Triggers `window.location.reload()` immediately
+- If `hard: true`, attempts to bypass browser cache (browser support varies)
+- Respects idempotency keys to prevent reload loops
+- Works in both pull (mutation response) and push (SSE) paths
+- ALL clients reload, including the one that originated the directive
+
+**Important:** This is a **highly disruptive operation** that:
+- ⚠️ Loses all unsaved client-side state (form inputs, UI state, etc.)
+- ⚠️ Interrupts any in-flight operations
+- ⚠️ Resets all cached data
+- ⚠️ May interrupt user workflows mid-task
+- ⚠️ Creates a jarring user experience
+
+**Examples:**
+
+```javascript
+// Soft reload (respects cache)
+{ "op": "force_reload_page" }
+
+// Hard reload (bypasses cache, useful after deployments)
+{ "op": "force_reload_page", "hard": true }
+
+// Scoped to specific user (via audience)
+{
+  "op": "force_reload_page",
+  "audience": "user-123",
+  "idempotency_key": "role-change-abc"
+}
+
+// System-wide update with idempotency protection
+{
+  "op": "force_reload_page",
+  "hard": true,
+  "idempotency_key": "deployment-2024-12-08-v2.1.0"
+}
+```
+
+**Best practices:**
+1. ✅ Always use idempotency keys to prevent reload loops
+2. ✅ Use `audience` to target specific users when possible
+3. ✅ Consider showing a warning message before sending (client-side)
+4. ✅ Use only as a last resort when refresh directives are insufficient
+5. ❌ Avoid using in response to routine CRUD operations
+6. ❌ Don't use during active user workflows (e.g., form filling)
+
 ---
 
 ## Directive Flow

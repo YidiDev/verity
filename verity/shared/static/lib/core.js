@@ -1884,6 +1884,34 @@ function applyDirectives(directives = [], options = {}) {
         } else if (d.op === "invalidate" && Array.isArray(d.targets)) {
             tasks.push(applyDirectives(d.targets, opts));
             detail.triggered.push({ kind: "cascade", count: d.targets.length });
+        } else if (d.op === "force_reload_page") {
+            // Force a full page reload
+            if (typeof window !== "undefined" && window.location) {
+                const hard = d.hard === true;
+                detail.triggered.push({ kind: "page_reload", hard });
+                emitLifecycle("directive:processed", detail);
+                
+                // Perform the reload
+                // Note: hard reload via location.reload(true) is deprecated but still works in some browsers
+                // Modern approach: use location.reload() which respects cache-control headers
+                if (hard) {
+                    // Try hard reload (may not work in all browsers)
+                    try {
+                        window.location.reload(true);
+                    } catch (e) {
+                        // Fallback to regular reload
+                        window.location.reload();
+                    }
+                } else {
+                    window.location.reload();
+                }
+                
+                // Code after this won't execute since page reloads
+                return Promise.resolve();
+            } else {
+                // Non-browser environment (e.g., Node.js, testing)
+                detail.triggered.push({ kind: "page_reload", skipped: "not_browser" });
+            }
         }
 
         emitLifecycle("directive:processed", detail);
