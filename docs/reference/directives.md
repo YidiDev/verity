@@ -272,6 +272,228 @@ Equivalent to:
 
 ---
 
+### `force_reload_page`
+
+Forces a complete page reload, discarding all client-side state and cache.
+
+#### Schema
+
+```typescript
+{
+  op: "force_reload_page"
+  hard?: boolean                  // If true, attempts cache-bypassing reload (default: false)
+  
+  // Optional metadata
+  idempotency_key?: string        // Deduplication key (HIGHLY RECOMMENDED)
+  timestamp?: number              // When triggered
+  audience?: string               // Target audience (e.g., "user-123", "team-abc")
+  source?: string                 // Originating client ID
+  seq?: number                    // Sequence number
+}
+```
+
+#### Behavior
+
+**Soft Reload (default):**
+```javascript
+{ "op": "force_reload_page" }
+```
+- Triggers `window.location.reload()`
+- Respects browser cache and cache-control headers
+- Faster reload, suitable for most use cases
+
+**Hard Reload:**
+```javascript
+{ "op": "force_reload_page", "hard": true }
+```
+- Attempts `window.location.reload(true)` to bypass cache
+- Falls back to soft reload if hard reload not supported
+- Useful after deployments or when cached assets may be stale
+- Note: Hard reload API is deprecated but still works in most browsers
+
+**What happens:**
+1. Verity processes the directive
+2. Emits lifecycle event `directive:processed` with `kind: "page_reload"`
+3. Immediately calls `window.location.reload()` or `window.location.reload(true)`
+4. Browser discards all JavaScript state and reloads the page
+5. Code execution stops (reload is synchronous)
+
+**Idempotency:**
+- ALWAYS use `idempotency_key` to prevent reload loops
+- Verity tracks recent keys (5-minute window, 2048 key limit)
+- If same key seen twice, second reload is skipped
+
+**Client Behavior:**
+- ALL clients reload, including the one that originated the directive
+- Unlike `refresh_*` directives, source filtering does NOT apply
+- Works in both pull (mutation response) and push (SSE) paths
+- In non-browser environments (Node.js, testing), directive is logged but no reload occurs
+
+#### Use Cases
+
+| Scenario | Directive |
+|----------|-----------|
+| System config updated | `{ op: "force_reload_page", hard: true, idempotency_key: "config-v2" }` |
+| User role changed | `{ op: "force_reload_page", audience: "user-123", idempotency_key: "role-change-abc" }` |
+| Schema migration | `{ op: "force_reload_page", hard: true, idempotency_key: "migration-v3.0.0" }` |
+| Emergency resync | `{ op: "force_reload_page", idempotency_key: "emergency-resync-20241208" }` |
+| After deployment | `{ op: "force_reload_page", hard: true, idempotency_key: "deploy-v2.1.0" }` |
+
+#### Server Examples
+
+**Global System Update:**
+```python
+@app.post('/api/admin/deploy-config')
+def deploy_config():
+    """Deploy new system configuration - force all clients to reload"""
+    
+    # Update system configuration
+    update_system_config(request.json)
+    
+    directives = [{
+        'op': 'force_reload_page',
+        'hard': True,  # Bypass cache to get new assets
+        'idempotency_key': f'config-deploy-{int(time.time())}'
+    }]
+    
+    emit_directives(directives, audience='global')
+    
+    return {
+        'ok': True,
+        'message': 'Configuration deployed, all clients reloading',
+        'directives': directives
+    }
+```
+
+**User-Specific Role Change:**
+```python
+@app.put('/api/users/<int:user_id>/role')
+def update_user_role(user_id):
+    """Change user's role - force their client to reload"""
+    
+    user = User.query.get_or_404(user_id)
+    old_role = user.role
+    user.role = request.json['role']
+    db.session.commit()
+    
+    directives = [{
+        'op': 'force_reload_page',
+        'audience': f'user-{user_id}',
+        'idempotency_key': f'role-change-{user_id}-{int(time.time())}'
+    }]
+    
+    # Only send to this specific user
+    emit_directives(directives, audience=f'user-{user_id}')
+    
+    return {
+        'ok': True,
+        'message': f'Role changed from {old_role} to {user.role}',
+        'directives': directives
+    }
+```
+
+**Conditional Reload After Migration:**
+```python
+@app.post('/api/admin/run-migration')
+def run_migration():
+    """Run database migration - reload clients if schema changed"""
+    
+    result = run_database_migration()
+    
+    directives = []
+    
+    if result['schema_changed']:
+        # Schema changed - force reload with hard refresh
+        directives.append({
+            'op': 'force_reload_page',
+            'hard': True,
+            'idempotency_key': f'migration-{result["version"]}'
+        })
+    else:
+        # Data-only changes - just refresh collections
+        directives.append({
+            'op': 'refresh_collection',
+            'name': 'all_data'
+        })
+    
+    emit_directives(directives, audience='global')
+    
+    return {
+        'ok': True,
+        'migration': result,
+        'directives': directives
+    }
+```
+
+**Team-Scoped Reload:**
+```python
+@app.put('/api/teams/<int:team_id>/settings')
+def update_team_settings(team_id):
+    """Update team settings - reload all team members"""
+    
+    team = Team.query.get_or_404(team_id)
+    team.settings = request.json['settings']
+    db.session.commit()
+    
+    directives = [{
+        'op': 'force_reload_page',
+        'audience': f'team-{team_id}',
+        'idempotency_key': f'team-settings-{team_id}-{int(time.time())}'
+    }]
+    
+    emit_directives(directives, audience=f'team-{team_id}')
+    
+    return {
+        'ok': True,
+        'directives': directives
+    }
+```
+
+#### Client Example
+
+```javascript
+// Manual trigger (e.g., admin action)
+async function forceReloadAllClients() {
+    const response = await fetch('/api/admin/force-reload', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Verity-Client-ID': DL.clientId()
+        }
+    });
+    
+    const payload = await response.json();
+    
+    // This client will also reload
+    if (payload.directives) {
+        DL.applyDirectives(payload.directives);
+        // Page reloads immediately, code after this won't execute
+    }
+}
+
+// With user confirmation
+async function deployNewVersion() {
+    if (confirm('Deploy new version? All users will be reloaded.')) {
+        await fetch('/api/admin/deploy', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Verity-Client-ID': DL.clientId()
+            },
+            body: JSON.stringify({ 
+                version: '2.1.0',
+                hard_reload: true 
+            })
+        });
+        
+        // Server responds with force_reload_page directive
+        // Page reloads automatically via SSE or mutation response
+    }
+}
+```
+
+---
+
 ## Metadata Fields
 
 All directive types support these optional metadata fields:
@@ -891,6 +1113,53 @@ def update_profile(user_id):
         audience=f'user-{user_id}'  # ← Only this user gets update
     )
 ```
+
+### 6. Use force_reload_page Sparingly
+
+```python
+# ❌ DON'T: Use for routine updates
+@app.put('/api/todos/<int:id>')
+def update_todo(id):
+    # ...
+    return {
+        'directives': [
+            { 'op': 'force_reload_page' }  # ❌ Overkill!
+        ]
+    }
+
+# ✅ DO: Use refresh directives for routine updates
+return {
+    'directives': [
+        { 'op': 'refresh_item', 'name': 'todo', 'id': id },
+        { 'op': 'refresh_collection', 'name': 'todos' }
+    ]
+}
+
+# ✅ DO: Use force_reload_page for critical system changes
+@app.post('/api/admin/deploy-config')
+def deploy_config():
+    update_system_config()
+    return {
+        'directives': [{
+            'op': 'force_reload_page',
+            'hard': True,
+            'idempotency_key': f'deploy-{config_version}'  # ← Always use idempotency key!
+        }]
+    }
+```
+
+!!! warning "force_reload_page Best Practices"
+    **Always:**
+    - ✅ Include `idempotency_key` to prevent reload loops
+    - ✅ Use `audience` to limit scope when possible
+    - ✅ Prefer `refresh_*` directives for routine updates
+    - ✅ Document why force reload is necessary
+    
+    **Never:**
+    - ❌ Use for CRUD operations (create, update, delete items)
+    - ❌ Use without idempotency key
+    - ❌ Use during active user workflows
+    - ❌ Use as a "shortcut" to avoid proper refresh directives
 
 ---
 

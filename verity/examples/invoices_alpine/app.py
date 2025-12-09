@@ -495,6 +495,75 @@ def delete_invoice(item_id: int):
     response_payload = _with_optional_directives({"ok": True}, directives)
     return jsonify(response_payload)
 
+
+@app.post("/api/admin/force-reload")
+def force_reload_all_clients():
+    """
+    Example endpoint demonstrating force_reload_page directive.
+    
+    This would typically be used for:
+    - System configuration changes
+    - Schema migrations
+    - Emergency resync scenarios
+    - After deployments requiring fresh client state
+    
+    In a real application, this endpoint would be protected by admin authentication.
+    """
+    # Generate unique idempotency key to prevent reload loops
+    reload_key = f"admin-reload-{int(time.time())}"
+    
+    # Get optional parameters from request
+    hard = request.json.get("hard", False) if request.json else False
+    audience = request.json.get("audience", "global") if request.json else "global"
+    
+    directives = [{
+        "op": "force_reload_page",
+        "hard": hard,
+        "idempotency_key": reload_key
+    }]
+    
+    # Emit to all clients (or specific audience)
+    emit_directives(directives, get_request_client_id(), audience=audience)
+    
+    response_payload = _with_optional_directives({
+        "ok": True,
+        "message": f"Force reload initiated for audience: {audience}",
+        "reload_key": reload_key
+    }, directives)
+    
+    return jsonify(response_payload)
+
+
+@app.post("/api/admin/deploy-config")
+def deploy_config():
+    """
+    Example: Deploy system configuration and force all clients to reload with hard refresh.
+    
+    This simulates a deployment scenario where:
+    1. System configuration is updated
+    2. All clients need to reload to get new assets/config
+    3. Hard reload ensures cache is bypassed
+    """
+    # In a real app, you would update system configuration here
+    # For this example, we'll just simulate it
+    config_version = request.json.get("version", "unknown") if request.json else "unknown"
+    
+    directives = [{
+        "op": "force_reload_page",
+        "hard": True,  # Hard reload to bypass cache after deployment
+        "idempotency_key": f"deploy-config-{config_version}"
+    }]
+    
+    emit_directives(directives, get_request_client_id(), audience="global")
+    
+    response_payload = _with_optional_directives({
+        "ok": True,
+        "message": f"Configuration version {config_version} deployed, all clients reloading"
+    }, directives)
+    
+    return jsonify(response_payload)
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
 
