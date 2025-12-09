@@ -1053,11 +1053,7 @@ function finalizeItemMeta(ref, canonicalLevel, qid, overrides = {}, { force = fa
     };
 
     if (!Object.prototype.hasOwnProperty.call(overrides, "isLoading")) {
-        // If we have data, we're definitely not loading
-        // This handles cases where coalesced requests may have mismatched query IDs
-        if (ref.data != null) {
-            next.isLoading = false;
-        } else if (matchedActiveQuery || next.activeQueryId == null) {
+        if (matchedActiveQuery || next.activeQueryId == null) {
             next.isLoading = false;
         }
     }
@@ -1283,6 +1279,7 @@ function applyFetchedLevel(T, typeName, id, ref, sourceLevelKey, data, timestamp
         error: null,
         lastFetchedAny: timestamp,
         levelStamps: nextLevelStamps,
+        isLoading: false,  // Fetch completed successfully, clear loading state
     };
     const nextMeta = finalizeItemMeta(ref, sourceLevelKey, qid, overrides, options);
 
