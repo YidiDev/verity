@@ -529,7 +529,7 @@ function evictCollectionEntry(name, key, entry) {
     if (!entry || key === PARAM_DEFAULT_KEY) return;
     try {
         assignRef(entry, {
-            data: { ids: [], count: 0 },
+            data: { ids: [], count: 0, meta: null, items: null },
             meta: {
                 ...entry.meta,
                 isLoading: false,
@@ -923,7 +923,7 @@ function createCollection(name, { fetch, stalenessMs = 15_000 }) {
     if (!name || typeof fetch !== "function") throw new Error("createCollection requires name and fetch()");
     if (G.collections.has(name)) throw new Error(`Collection '${name}' already exists`);
     const ref = {
-        data: { ids: [], count: 0 },
+        data: { ids: [], count: 0, meta: null, items: null },
         meta: {
             isLoading: false,
             lastFetched: null,
@@ -1202,7 +1202,7 @@ function ensureCollectionRefEntry(name, params) {
     if (!C.refs.has(key)) {
         const snapshot = cloneParams(params);
         const entry = {
-            data: { ids: [], count: 0 },
+            data: { ids: [], count: 0, meta: null, items: null },
             meta: {
                 isLoading: false,
                 lastFetched: null,
@@ -1540,13 +1540,19 @@ async function _startCollectionFetch(name, { force = false, params = undefined }
 
     const promise = (async () => {
         try {
-            const data = await fetch(snapshot || {}); // { ids, count }
+            const result = await fetch(snapshot || {}); // { ids, count, meta?, items?, ... }
             if (ref.meta.activeQueryId !== qid) {
                 emitLifecycle("collection:fetch:aborted", { name, params: snapshot, qid, reason: "superseded" });
                 return; // superseded
             }
+            // Preserve all server response fields non-destructively
+            const ids = Array.isArray(result.ids) ? result.ids.slice() : [];
+            const count = typeof result.count === "number" ? result.count : ids.length;
+            const serverMeta = result.meta !== undefined ? result.meta : null;
+            const items = result.items !== undefined ? result.items : null;
+
             assignRef(ref, {
-                data: { ids: Array.isArray(data.ids) ? data.ids.slice() : [], count: Number(data.count ?? 0) },
+                data: { ids, count, meta: serverMeta, items },
                 meta: { ...ref.meta, isLoading: false, lastFetched: nowISO(), error: null, activeQueryId: null }
             });
             emitLifecycle("collection:fetch:success", { name, params: snapshot, qid });
@@ -1746,11 +1752,14 @@ function applyCollectionDirectiveResult(name, result, params = undefined) {
     const payload = Object.prototype.hasOwnProperty.call(result, "data") ? result.data : result;
     if (!payload || typeof payload !== "object") return false;
     if (!Array.isArray(payload.ids)) return false;
+    // Preserve all server response fields non-destructively
     const ids = payload.ids.slice();
     const count = Number.isFinite(payload.count) ? Number(payload.count) : ids.length;
+    const serverMeta = payload.meta !== undefined ? payload.meta : null;
+    const items = payload.items !== undefined ? payload.items : null;
     const ts = typeof result.ts === "string" ? result.ts : nowISO();
     assignRef(ref, {
-        data: { ids, count },
+        data: { ids, count, meta: serverMeta, items },
         meta: { ...ref.meta, isLoading: false, error: null, lastFetched: ts, activeQueryId: null }
     });
     return true;
