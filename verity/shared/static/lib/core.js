@@ -1720,10 +1720,30 @@ function planFetchLevels(T, levelsSet) {
 function fetchCollection(name, opts = {}) {
     const C = G.collections.get(name);
     if (!C) throw new Error(`Unknown collection '${name}'`);
-    const { ref } = ensureCollectionRefEntry(name, opts.params);
+    
+    // Support both { params: {...} } and direct params format
+    // If opts.params is explicitly provided, use it
+    // Otherwise, if opts has keys other than 'force' and 'params', treat opts as params directly
+    let effectiveParams = opts.params;
+    let effectiveForce = opts.force;
+    
+    if (effectiveParams === undefined) {
+        const optsKeys = Object.keys(opts);
+        const hasNonMetaKeys = optsKeys.some(k => k !== 'force' && k !== 'params');
+        if (hasNonMetaKeys) {
+            // Treat opts as params directly (excluding force)
+            const { force, params, ...rest } = opts;
+            effectiveParams = rest;
+            effectiveForce = force;
+        }
+    }
+    
+    const normalizedOpts = { params: effectiveParams, force: effectiveForce };
+    
+    const { ref } = ensureCollectionRefEntry(name, effectiveParams);
     ref.meta.lastUsedAt = nowISO();
     scheduleMemorySweep();
-    _startCollectionFetch(name, opts);
+    _startCollectionFetch(name, normalizedOpts);
     
     // Set isLoading based on actual in-flight state (source of truth)
     // DO NOT sync here - it creates a race condition where isLoading=true but activeQueryId=null
