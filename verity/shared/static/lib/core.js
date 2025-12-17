@@ -1242,7 +1242,7 @@ function isItemLoading(typeName, id, levelName = null) {
 }
 
 function isCollectionLoading(name, params) {
-    const key = collectionKey(name, params);
+    const key = `${name}::${paramsKey(params)}`;
     return G.inFlightCol.has(key);
 }
 
@@ -1515,8 +1515,12 @@ async function flushBulkQueue(queueKey) {
 async function _startCollectionFetch(name, { force = false, params = undefined } = {}) {
     const C = G.collections.get(name); if (!C) throw new Error(`Unknown collection '${name}'`);
     const { fetch, stalenessMs } = C;
-    const { ref, key } = ensureCollectionRefEntry(name, params);
-    const inFlightKey = `${name}::${key}`;
+    // Compute the params key directly to ensure correct in-flight tracking for parameterized collections
+    // This ensures parameterized collections (e.g., { status: 'active' }) are tracked separately from
+    // non-parameterized collections, even when requests are in-flight
+    const effectiveParamsKey = paramsKey(params);
+    const { ref } = ensureCollectionRefEntry(name, params);
+    const inFlightKey = `${name}::${effectiveParamsKey}`;
     const snapshot = cloneParams(params ?? ref.meta.paramsSnapshot ?? {});
 
     if (G.inFlightCol.has(inFlightKey)) {
@@ -1527,7 +1531,16 @@ async function _startCollectionFetch(name, { force = false, params = undefined }
         return bucket.promise;
     }
 
-    const shouldFetch = force || isStale(ref.meta.lastFetched, stalenessMs);
+    // Verify that the ref's paramsKey matches the expected key
+    // If they don't match, the ref's lastFetched is for different params, so we must fetch
+    const refParamsKey = ref.meta && ref.meta.paramsKey ? ref.meta.paramsKey : PARAM_DEFAULT_KEY;
+    const paramsKeyMismatch = refParamsKey !== effectiveParamsKey;
+    
+    // Also check if the ref has never been fetched for these specific params
+    // This handles the case where a new parameterized ref should always fetch
+    const neverFetchedForParams = !ref.meta.lastFetched;
+    
+    const shouldFetch = force || paramsKeyMismatch || neverFetchedForParams || isStale(ref.meta.lastFetched, stalenessMs);
     if (!shouldFetch) {
         if (ref.meta.isLoading) assignRef(ref, { meta: { ...ref.meta, isLoading: false } });
         emitLifecycle("collection:fetch:skip", { name, params: snapshot, reason: "fresh" });
