@@ -12,6 +12,10 @@ export default tseslint.config(
       "verity/",
       ".yarn/",
       "coverage/",
+      "scripts/",
+      // Legacy JS files -- will be converted to TS in a future release
+      "src/adapters/",
+      "src/devtools/",
     ],
   },
 
