@@ -21,10 +21,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "pretest": "vite build",
-    "test": "vitest run",
+    "test": "vite build && vitest run",
     "test:watch": "vite build && vitest",
-    "check": "yarn typecheck && yarn lint && yarn test"
+    "check": "yarn typecheck && yarn lint && yarn build && vitest run"
   },
   "keywords": [
     "ui",
