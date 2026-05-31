@@ -1,0 +1,11 @@
+name: Verity CodeQL Config
+
+paths-ignore:
+  - verity/examples
+  - dist
+  - site
+  - node_modules
+  - .venv
+  - .yarn
+  - docs
+  - scripts
