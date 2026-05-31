@@ -17,11 +17,6 @@ updates:
         update-types:
           - minor
           - patch
-      production-dependencies:
-        dependency-type: production
-        update-types:
-          - minor
-          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -34,3 +29,7 @@ updates:
       - ci
     commit-message:
       prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"
