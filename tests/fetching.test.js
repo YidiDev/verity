@@ -313,3 +313,126 @@ describe("fetchItem", () => {
     expect(ref.data.name).toBe("FromDirective");
   });
 });
+
+describe("fetchCollection direct params format", () => {
+  it("treats opts as params when non-meta keys present", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    const fetchFn = vi.fn().mockResolvedValue({ ids: [1], count: 1 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
+
+    // Direct params format: { status: "active" } instead of { params: { status: "active" } }
+    DLCore.fetchCollection("widgets", { status: "active" });
+    await tick();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const calledWith = fetchFn.mock.calls[0][0];
+    expect(calledWith.status).toBe("active");
+  });
+});
+
+describe("collection data preserves server meta and items", () => {
+  it("preserves meta and items from fetch response", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    const fetchFn = vi.fn().mockResolvedValue({
+      ids: [1, 2],
+      count: 2,
+      meta: { cursor: "abc123" },
+      items: { 1: { name: "A" }, 2: { name: "B" } },
+    });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
+
+    const ref = DLCore.fetchCollection("widgets");
+    await tick();
+
+    expect(ref.data.ids).toEqual([1, 2]);
+    expect(ref.data.meta).toEqual({ cursor: "abc123" });
+    expect(ref.data.items).toEqual({ 1: { name: "A" }, 2: { name: "B" } });
+  });
+
+  it("defaults meta and items to null when not in response", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    const fetchFn = vi.fn().mockResolvedValue({ ids: [1], count: 1 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
+
+    const ref = DLCore.fetchCollection("widgets");
+    await tick();
+
+    expect(ref.data.meta).toBeNull();
+    expect(ref.data.items).toBeNull();
+  });
+});
+
+describe("source-of-truth loading helpers", () => {
+  it("isItemLoading returns true for in-flight items", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    let resolve;
+    const p = new Promise((r) => { resolve = r; });
+    DLCore.createType("widget", { fetch: vi.fn().mockReturnValue(p) });
+
+    DLCore.fetchItem("widget", "1");
+    await tick();
+
+    // Should be in-flight
+    expect(DLCore.isItemLoading("widget", "1")).toBe(true);
+
+    resolve({ id: "1", name: "test" });
+    await tick();
+
+    // Should no longer be in-flight
+    expect(DLCore.isItemLoading("widget", "1")).toBe(false);
+  });
+
+  it("isCollectionLoading returns true for in-flight collections", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    let resolve;
+    const p = new Promise((r) => { resolve = r; });
+    DLCore.createCollection("widgets", { fetch: vi.fn().mockReturnValue(p) });
+
+    DLCore.fetchCollection("widgets");
+    await tick();
+
+    expect(DLCore.isCollectionLoading("widgets")).toBe(true);
+
+    resolve({ ids: [1], count: 1 });
+    await tick();
+
+    expect(DLCore.isCollectionLoading("widgets")).toBe(false);
+  });
+
+  it("hasAnyInFlightRequests returns true when anything is in-flight", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    expect(DLCore.hasAnyInFlightRequests()).toBe(false);
+
+    let resolve;
+    const p = new Promise((r) => { resolve = r; });
+    DLCore.createType("widget", { fetch: vi.fn().mockReturnValue(p) });
+
+    DLCore.fetchItem("widget", "1");
+    await tick();
+
+    expect(DLCore.hasAnyInFlightRequests()).toBe(true);
+
+    resolve({ id: "1" });
+    await tick();
+
+    expect(DLCore.hasAnyInFlightRequests()).toBe(false);
+  });
+});

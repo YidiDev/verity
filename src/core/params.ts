@@ -100,7 +100,7 @@ export function ensureCollectionRefEntry(
     const snapshot = cloneParams(params);
 
     const entry: CollectionRef = {
-      data: { ids: [], count: 0 },
+      data: { ids: [], count: 0, meta: null, items: null },
       meta: {
         isLoading: false,
         lastFetched: null,

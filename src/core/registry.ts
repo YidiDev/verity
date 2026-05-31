@@ -141,7 +141,7 @@ export function createCollection(
   const { fetch, stalenessMs = 15_000 } = options;
 
   const ref = {
-    data: { ids: [] as unknown[], count: 0 },
+    data: { ids: [] as unknown[], count: 0, meta: null as unknown, items: null as unknown },
     meta: {
       isLoading: false,
       lastFetched: null,

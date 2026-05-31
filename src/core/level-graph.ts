@@ -78,6 +78,7 @@ export function applyFetchedLevel(
     error: null,
     lastFetchedAny: timestamp,
     levelStamps: nextLevelStamps,
+    isLoading: false, // Fetch completed successfully, clear loading state
   };
 
   const nextMeta = finalizeItemMeta(

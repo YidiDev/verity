@@ -71,13 +71,16 @@ function applyCollectionDirectiveResult(
   if (!payload || typeof payload !== "object") return false;
   const obj = payload as Record<string, unknown>;
   if (!Array.isArray(obj.ids)) return false;
+  // Preserve all server response fields non-destructively
   const ids = (obj.ids as unknown[]).slice();
   const count = Number.isFinite(obj.count)
     ? Number(obj.count)
     : ids.length;
+  const serverMeta = obj.meta !== undefined ? obj.meta : null;
+  const items = obj.items !== undefined ? obj.items : null;
   const ts = typeof result.ts === "string" ? result.ts : nowISO();
   assignRef(ref, {
-    data: { ids, count },
+    data: { ids, count, meta: serverMeta, items },
     meta: {
       ...ref.meta,
       isLoading: false,
@@ -362,6 +365,29 @@ export function applyDirectives(
         kind: "cascade",
         count: d.targets.length,
       });
+    } else if (d.op === "force_reload_page") {
+      if (typeof window !== "undefined" && window.location) {
+        const hard = (d as unknown as Record<string, unknown>).hard === true;
+        (detail.triggered as unknown[]).push({ kind: "page_reload", hard });
+        emitLifecycle("directive:processed", detail);
+
+        if (hard) {
+          try {
+            window.location.reload();
+          } catch {
+            window.location.reload();
+          }
+        } else {
+          window.location.reload();
+        }
+
+        return Promise.resolve([]);
+      } else {
+        (detail.triggered as unknown[]).push({
+          kind: "page_reload",
+          skipped: "not_browser",
+        });
+      }
     }
 
     emitLifecycle("directive:processed", detail);

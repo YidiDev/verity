@@ -79,6 +79,10 @@ export interface MemoryState extends MemoryDefaults {
 export interface CollectionData {
   ids: unknown[];
   count: number;
+  /** Server-provided metadata preserved from the fetch response. */
+  meta: unknown;
+  /** Server-provided items preserved from the fetch response. */
+  items: unknown;
 }
 
 export interface CollectionMeta {
@@ -373,8 +377,15 @@ export interface FetchItemOptions {
   force?: boolean;
 }
 
-/** Options accepted by `fetchCollection()`. */
+/**
+ * Options accepted by `fetchCollection()`.
+ *
+ * Supports two calling conventions:
+ *   fetchCollection("name", { params: { status: "active" } })
+ *   fetchCollection("name", { status: "active" })  // direct params format
+ */
 export interface FetchCollectionOptions {
   force?: boolean;
   params?: unknown;
+  [key: string]: unknown;
 }

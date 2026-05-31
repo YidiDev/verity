@@ -10,7 +10,13 @@ import "./init.js";
 export { init } from "./init.js";
 export { onChange } from "./reactivity.js";
 export { createType, createCollection } from "./registry.js";
-export { fetchCollection, fetchItem } from "./fetchers.js";
+export {
+  fetchCollection,
+  fetchItem,
+  isItemLoading,
+  isCollectionLoading,
+  hasAnyInFlightRequests,
+} from "./fetchers.js";
 export { applyDirectives } from "./directives.js";
 export { state, devtools, clientId } from "./devtools-introspection.js";
 export { onLifecycle } from "./lifecycle.js";

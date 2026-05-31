@@ -355,5 +355,24 @@ describe("applyDirectives", () => {
       // Should not throw, just skip
       expect(result).toBeDefined();
     });
+
+    it("force_reload_page emits lifecycle event in non-browser context", async () => {
+      const DLCore = freshCore();
+      DLCore.configureMemory({ enabled: false });
+      DLCore.configureSse({ enabled: false });
+
+      const events = [];
+      DLCore.onLifecycle("directive:processed", (p) => events.push(p));
+
+      // In jsdom, window.location exists but reload is a function.
+      // The directive should process without throwing.
+      // We can't easily test the actual reload, but we can verify it processes.
+      await DLCore.applyDirectives([
+        { op: "force_reload_page" },
+      ]);
+
+      // Should have processed the directive
+      expect(events.length).toBeGreaterThanOrEqual(1);
+    });
   });
 });

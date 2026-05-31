@@ -152,6 +152,8 @@ export function devtools(): Readonly<Record<string, unknown>> {
     inFlight: {
       collections: inFlightCollections,
       items: inFlightItems,
+      totalCount: G.inFlightCol.size + G.inFlightItm.size,
+      hasAnyInFlight: G.inFlightItm.size > 0 || G.inFlightCol.size > 0,
     },
     directiveRegistry: {
       ttlMs: G.directiveRegistry.ttlMs,

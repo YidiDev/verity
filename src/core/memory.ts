@@ -90,7 +90,7 @@ function evictCollectionEntry(
   if (!entry || key === PARAM_DEFAULT_KEY) return;
   try {
     assignRef(entry, {
-      data: { ids: [], count: 0 },
+      data: { ids: [], count: 0, meta: null, items: null },
       meta: {
         ...entry.meta,
         isLoading: false,

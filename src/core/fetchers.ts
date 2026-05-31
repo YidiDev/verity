@@ -7,6 +7,7 @@ import {
   nowISO,
   genQid,
   toLevelKey,
+  PARAM_DEFAULT_KEY,
 } from "./constants.js";
 import { emitLifecycle } from "./lifecycle.js";
 import { scheduleMemorySweep } from "./memory.js";
@@ -17,6 +18,7 @@ import {
   ensureCollectionRefEntry,
   itemKey,
   cloneParams,
+  paramsKey,
   setActiveLevelQueryId,
   isLevelActive,
   finalizeItemMeta,
@@ -75,7 +77,30 @@ export function planFetchLevels(
   return Array.from(fetchSet);
 }
 
-// ---- Internal fetchers (coalesced, latest-wins) ---------------------------
+// ---- Source-of-truth loading state helpers ---------------------------------
+
+export function isItemLoading(
+  typeName: string,
+  id: unknown,
+  levelName: string | null = null,
+): boolean {
+  const key = itemKey(typeName, id, levelName);
+  return G.inFlightItm.has(key);
+}
+
+export function isCollectionLoading(
+  name: string,
+  params?: unknown,
+): boolean {
+  const key = `${name}::${paramsKey(params)}`;
+  return G.inFlightCol.has(key);
+}
+
+export function hasAnyInFlightRequests(): boolean {
+  return G.inFlightItm.size > 0 || G.inFlightCol.size > 0;
+}
+
+// ---- Internal collection fetcher ------------------------------------------
 
 export async function _startCollectionFetch(
   name: string,
@@ -84,28 +109,43 @@ export async function _startCollectionFetch(
   const C = G.collections.get(name);
   if (!C) throw new Error(`Unknown collection '${name}'`);
   const { fetch, stalenessMs } = C;
-  const { ref, key } = ensureCollectionRefEntry(name, params);
-  const inFlightKey = `${name}::${key}`;
+
+  // Compute the params key directly to ensure correct in-flight tracking
+  // for parameterized collections. This ensures parameterized collections
+  // are tracked separately from non-parameterized ones.
+  const effectiveParamsKey = paramsKey(params);
+  const { ref } = ensureCollectionRefEntry(name, params);
+  const inFlightKey = `${name}::${effectiveParamsKey}`;
   const snapshot = cloneParams(
     params ?? (ref.meta as { paramsSnapshot?: unknown }).paramsSnapshot ?? {},
   );
 
   if (G.inFlightCol.has(inFlightKey)) {
-    const bucket = G.inFlightCol.get(inFlightKey)!;
-    if (!ref.meta.isLoading)
-      {assignRef(ref, { meta: { ...ref.meta, isLoading: true, error: null } });}
+    // Don't update isLoading here - it will be synced with in-flight state
+    // Setting isLoading=true without activeQueryId breaks the invariant
     emitLifecycle("collection:fetch:coalesced", {
       name,
       params: snapshot,
       key: inFlightKey,
     });
-    return bucket.promise;
+    return G.inFlightCol.get(inFlightKey)!.promise;
   }
 
-  const shouldFetch = force || isStale(ref.meta.lastFetched, stalenessMs);
+  // Verify that the ref's paramsKey matches the expected key.
+  // If they don't match, the ref's lastFetched is for different params,
+  // so we must fetch.
+  const refParamsKey =
+    ref.meta && ref.meta.paramsKey ? ref.meta.paramsKey : PARAM_DEFAULT_KEY;
+  const paramsKeyMismatch = refParamsKey !== effectiveParamsKey;
+  const neverFetchedForParams = !ref.meta.lastFetched;
+
+  const shouldFetch =
+    force || paramsKeyMismatch || neverFetchedForParams || isStale(ref.meta.lastFetched, stalenessMs);
+
   if (!shouldFetch) {
-    if (ref.meta.isLoading)
-      {assignRef(ref, { meta: { ...ref.meta, isLoading: false } });}
+    if (ref.meta.isLoading) {
+      assignRef(ref, { meta: { ...ref.meta, isLoading: false } });
+    }
     emitLifecycle("collection:fetch:skip", {
       name,
       params: snapshot,
@@ -127,7 +167,7 @@ export async function _startCollectionFetch(
 
   const promise = (async (): Promise<void> => {
     try {
-      const data = await fetch(snapshot || {});
+      const result = await fetch(snapshot || {});
       if (ref.meta.activeQueryId !== qid) {
         emitLifecycle("collection:fetch:aborted", {
           name,
@@ -137,11 +177,22 @@ export async function _startCollectionFetch(
         });
         return;
       }
+      // Preserve all server response fields non-destructively
+      const resultObj = result as Record<string, unknown>;
+      const ids = Array.isArray(resultObj.ids)
+        ? (resultObj.ids as unknown[]).slice()
+        : [];
+      const count =
+        typeof resultObj.count === "number"
+          ? resultObj.count
+          : ids.length;
+      const serverMeta =
+        resultObj.meta !== undefined ? resultObj.meta : null;
+      const items =
+        resultObj.items !== undefined ? resultObj.items : null;
+
       assignRef(ref, {
-        data: {
-          ids: Array.isArray(data.ids) ? data.ids.slice() : [],
-          count: Number(data.count ?? 0),
-        },
+        data: { ids, count, meta: serverMeta, items },
         meta: {
           ...ref.meta,
           isLoading: false,
@@ -193,6 +244,8 @@ export async function _startCollectionFetch(
   return promise;
 }
 
+// ---- Internal item fetcher ------------------------------------------------
+
 export async function _startItemFetch(
   typeName: string,
   id: unknown,
@@ -208,15 +261,14 @@ export async function _startItemFetch(
   const eventBase = { typeName, id, level: levelLabel, canonicalLevel };
 
   if (G.inFlightItm.has(key)) {
-    const bucket = G.inFlightItm.get(key)!;
-    if (loud && !ref.meta.isLoading)
-      {assignRef(ref, { meta: { ...ref.meta, isLoading: true } });}
+    // Don't update isLoading here - setting isLoading=true without
+    // activeQueryId breaks the invariant (isLoading=true + activeQueryId=null)
     emitLifecycle("item:fetch:coalesced", {
       ...eventBase,
       loud: !!loud,
       key,
     });
-    return bucket.promise;
+    return G.inFlightItm.get(key)!.promise;
   }
 
   const isDefault = !levelName;
@@ -232,8 +284,9 @@ export async function _startItemFetch(
 
   const needs = force || !hasEnough || stale;
   if (!needs) {
-    if (loud && ref.meta.isLoading)
-      {assignRef(ref, { meta: { ...ref.meta, isLoading: false } });}
+    if (loud && ref.meta.isLoading) {
+      assignRef(ref, { meta: { ...ref.meta, isLoading: false } });
+    }
     emitLifecycle("item:fetch:skip", {
       ...eventBase,
       loud: !!loud,
@@ -249,6 +302,8 @@ export async function _startItemFetch(
     canonicalLevel,
     qid,
   );
+
+  // Always set activeQueryId for query matching, but only set isLoading if loud
   if (loud) {
     assignRef(ref, {
       meta: {
@@ -264,6 +319,7 @@ export async function _startItemFetch(
       meta: {
         ...ref.meta,
         error: null,
+        activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
       },
     });
@@ -315,16 +371,7 @@ export async function _startItemFetch(
           return;
         }
         const now = nowISO();
-        applyFetchedLevel(
-          T,
-          typeName,
-          id,
-          ref,
-          canonicalLevel,
-          data,
-          now,
-          qid,
-        );
+        applyFetchedLevel(T, typeName, id, ref, canonicalLevel, data, now, qid);
         emitLifecycle("item:fetch:success", {
           ...eventBase,
           qid,
@@ -364,7 +411,7 @@ export async function _startItemFetch(
   return promise;
 }
 
-// ---- Public fetch API (thin wrappers) -------------------------------------
+// ---- Public fetch API -----------------------------------------------------
 
 export function fetchCollection(
   name: string,
@@ -372,10 +419,33 @@ export function fetchCollection(
 ): CollectionRef {
   const C = G.collections.get(name);
   if (!C) throw new Error(`Unknown collection '${name}'`);
-  const { ref } = ensureCollectionRefEntry(name, opts.params);
+
+  // Support both { params: {...} } and direct params format.
+  // If opts.params is explicitly provided, use it.
+  // Otherwise, if opts has keys other than 'force' and 'params',
+  // treat opts as params directly.
+  let effectiveParams = opts.params;
+  let effectiveForce = opts.force;
+
+  if (effectiveParams === undefined) {
+    const optsKeys = Object.keys(opts);
+    const hasNonMetaKeys = optsKeys.some(
+      (k) => k !== "force" && k !== "params",
+    );
+    if (hasNonMetaKeys) {
+      const { force, params: _p, ...rest } = opts as Record<string, unknown>;
+      effectiveParams = rest;
+      effectiveForce = force as boolean | undefined;
+    }
+  }
+
+  const normalizedOpts = { params: effectiveParams, force: effectiveForce };
+
+  const { ref } = ensureCollectionRefEntry(name, effectiveParams);
   ref.meta.lastUsedAt = nowISO();
   scheduleMemorySweep();
-  _startCollectionFetch(name, opts);
+  _startCollectionFetch(name, normalizedOpts);
+
   return ref;
 }
 
@@ -388,11 +458,14 @@ export function fetchItem(
   const ref = ensureItemRef(typeName, id);
   ref.meta.lastUsedAt = nowISO();
   scheduleMemorySweep();
-  if (!opts.silent && !ref.meta.isLoading)
-    {assignRef(ref, { meta: { ...ref.meta, isLoading: true, error: null } });}
+
+  // _startItemFetch handles setting isLoading correctly.
+  // DO NOT sync isLoading here - it creates a race condition where
+  // isLoading=true but activeQueryId=null.
   _startItemFetch(typeName, id, levelName, {
     loud: !opts.silent,
     force: !!opts.force,
   });
+
   return ref;
 }
