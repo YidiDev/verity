@@ -31,7 +31,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
           cache: 'yarn'
 
       - name: Install dependencies
@@ -66,8 +65,10 @@ jobs:
       - name: Test
         run: yarn vitest run
 
-      - name: Publish to npm
-        run: npm publish --provenance
+      - name: Publish to npm (trusted publishing via OIDC)
+        run: |
+          npm config set registry https://registry.npmjs.org/
+          npm publish --provenance --access public
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
