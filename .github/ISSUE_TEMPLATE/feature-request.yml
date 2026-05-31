@@ -1,0 +1,84 @@
+name: Feature Request
+description: Propose a new feature that enhances Verity's core principles
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Feature requests should solve a real-world problem and align with Verity's philosophy. Before submitting, please check [existing issues](https://github.com/YidiDev/verity/issues) and [discussions](https://github.com/YidiDev/verity/discussions).
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Feature Summary
+      description: What feature are you proposing and what real-world problem does it solve?
+      placeholder: Describe the feature and the concrete problem it addresses.
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe a concrete scenario where this feature would be valuable. Not hypothetical -- real-world.
+      placeholder: "In my application, I need to... because..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: philosophy-alignment
+    attributes:
+      label: Philosophy Alignment
+      description: |
+        Confirm how this feature aligns with Verity's principles. See: [Philosophy](https://verity.yidi.sh/philosophy/)
+      options:
+        - label: This feature preserves server-truth authority
+          required: true
+        - label: This feature maintains truth/view-state separation
+          required: true
+        - label: This cannot be solved in the view layer instead
+          required: true
+        - label: This feature is framework-agnostic (or is a framework adapter)
+          required: true
+
+  - type: textarea
+    id: proposed-api
+    attributes:
+      label: Proposed API / Implementation
+      description: High-level design or API sketch. Reference existing patterns in Verity.
+      placeholder: |
+        ```js
+        verity.configure({
+          // your proposed API here
+        });
+        ```
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches were considered? Why is this the best fit?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: breaking-changes
+    attributes:
+      label: Breaking Changes
+      description: Would this introduce breaking changes?
+      options:
+        - "No"
+        - "Yes -- migration plan included below"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: migration-plan
+    attributes:
+      label: Migration Plan
+      description: If this introduces breaking changes, describe the migration path.
+    validations:
+      required: false

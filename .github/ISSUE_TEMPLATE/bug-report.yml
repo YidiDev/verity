@@ -1,0 +1,91 @@
+name: Bug Report
+description: Report a bug that affects server-truth, state separation, or directive processing
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill out the sections below so we can reproduce and fix the issue efficiently.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: Briefly describe the bug and its impact on server-truth or user experience.
+      placeholder: What happened? What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: Step-by-step instructions to reproduce the issue. Include a minimal code example if possible.
+      placeholder: |
+        1. Configure Verity with...
+        2. Register a collection...
+        3. Trigger a directive...
+        4. Observe that...
+    validations:
+      required: true
+
+  - type: input
+    id: verity-version
+    attributes:
+      label: Verity Version
+      description: Which version of Verity are you using?
+      placeholder: e.g. 2.0.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Framework Adapter
+      description: Which framework adapter are you using?
+      options:
+        - Alpine.js
+        - React
+        - Vue
+        - Svelte
+        - None (core only)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser-os
+    attributes:
+      label: Browser / OS
+      description: What browser and operating system are you using?
+      placeholder: e.g. Chrome 125 / macOS 15.1
+    validations:
+      required: false
+
+  - type: input
+    id: server-setup
+    attributes:
+      label: Server Setup
+      description: What server framework or transport are you using?
+      placeholder: e.g. Flask with SSE, Express with WebSocket
+    validations:
+      required: false
+
+  - type: textarea
+    id: philosophy-check
+    attributes:
+      label: Philosophy Alignment Check
+      description: |
+        Does this bug relate to server-truth authority or truth/view-state boundaries?
+        See: [Truth vs View State](https://verity.yidi.sh/concepts/truth-vs-view-state/)
+      placeholder: e.g. "This causes the UI to show stale data after a directive, violating server-truth."
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Screenshots, error logs, stack traces, or links to related issues.
+    validations:
+      required: false

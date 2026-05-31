@@ -1,0 +1,93 @@
+name: Performance Issue
+description: Report a performance regression or bottleneck
+labels: ["performance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Performance matters. Help us identify bottlenecks so Verity stays fast and efficient.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue
+      description: Describe the performance problem you're observing.
+      placeholder: "When fetching N entities, the UI takes X seconds to update..."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of Verity is affected?
+      options:
+        - Cache / state management
+        - Directive processing
+        - Fetcher execution
+        - Framework adapter reactivity
+        - Devtools
+        - Build / bundle size
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: measurements
+    attributes:
+      label: Measurements
+      description: |
+        Include any profiling data, timings, or benchmarks. Screenshots of devtools Performance tab are helpful.
+      placeholder: |
+        - Operation: ...
+        - Expected time: ...
+        - Actual time: ...
+        - Number of entities/directives: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Steps
+      description: How can we reproduce the performance issue?
+    validations:
+      required: true
+
+  - type: input
+    id: verity-version
+    attributes:
+      label: Verity Version
+      placeholder: e.g. 2.0.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Framework Adapter
+      options:
+        - Alpine.js
+        - React
+        - Vue
+        - Svelte
+        - None (core only)
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser-os
+    attributes:
+      label: Browser / OS
+      placeholder: e.g. Chrome 125 / macOS 15.1
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Profiler screenshots, flame graphs, or links to related issues.
+    validations:
+      required: false

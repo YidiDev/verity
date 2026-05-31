@@ -1,0 +1,57 @@
+name: Documentation Issue
+description: Report issues with docs, examples, or clarity improvements
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Documentation improvements are always welcome. Help us make Verity easier to understand.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing documentation
+        - Unclear or confusing explanation
+        - Outdated content
+        - Incorrect information
+        - Missing code example
+        - Typo or formatting issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current State
+      description: Link to the specific doc page or section and describe what's missing or confusing.
+      placeholder: "On https://verity.yidi.sh/..., the section about... is unclear because..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-change
+    attributes:
+      label: Proposed Change
+      description: What should be added or changed? Include why this improves clarity or adoption.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: How does this relate to Verity's philosophy or common user pain points?
+    validations:
+      required: false
+
+  - type: textarea
+    id: examples-needed
+    attributes:
+      label: Examples Needed
+      description: If requesting new examples, specify the domain, framework, and key patterns to demonstrate.
+    validations:
+      required: false

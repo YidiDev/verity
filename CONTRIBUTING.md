@@ -8,9 +8,9 @@ Thanks for your interest in improving Verity! This document outlines how to cont
 
 ## Code of Conduct
 
-**Be respectful, curious, and supportive.** Assume good intent and keep collaboration focused on building trustworthy software. Harassment, discrimination, and dismissive behavior are not welcome.
+This project is governed by our [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold it. Please report unacceptable behavior to yididev@gmail.com.
 
-**We optimize for clarity over cleverness.** Code should be obvious, documentation should lead with "why," and features should solve real problems without introducing unnecessary complexity.
+**The short version:** Be respectful, curious, and supportive. Assume good intent and keep collaboration focused on building trustworthy software. We optimize for clarity over cleverness.
 
 ---
 

@@ -1,0 +1,57 @@
+name: Question / Support
+description: Ask questions about Verity usage, philosophy, or troubleshooting
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking, please check: [Documentation](https://verity.yidi.sh) | [Existing Issues](https://github.com/YidiDev/verity/issues) | [Discussions](https://github.com/YidiDev/verity/discussions)
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Clear, specific question about Verity's usage, philosophy, or architecture.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What are you trying to build? Which docs or guides have you already read?
+      placeholder: |
+        - Building: ...
+        - Framework: ...
+        - Docs I've read: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-approach
+    attributes:
+      label: Current Approach
+      description: Code snippet or description of your current implementation.
+      render: javascript
+    validations:
+      required: false
+
+  - type: textarea
+    id: philosophy-reference
+    attributes:
+      label: Philosophy Reference
+      description: |
+        How does this relate to truth-state vs view-state?
+        See: [Philosophy](https://verity.yidi.sh/philosophy/)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pre-submission Checklist
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have read the relevant documentation
+          required: true
