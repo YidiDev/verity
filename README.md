@@ -2,7 +2,7 @@
 
 > **One strong idea:** the server is the only source of truth.  
 > **One clear boundary:** **truth-state** (server-owned) is not the same as **view-state** (client-owned).  
-> **One purpose:** a composable data layer that mediates between them—protocol-agnostic, framework-agnostic, and honest.
+> **One purpose:** a composable data layer that mediates between them--protocol-agnostic, framework-agnostic, and honest.
 
 Verity is the **backend of your frontend**. It sits between your server and view layer, handling caching, staleness, fan-out, and directive processing so your UI can focus purely on rendering.
 
@@ -10,8 +10,8 @@ Verity is the **backend of your frontend**. It sits between your server and view
 
 Modern frontends blur two fundamentally different kinds of state:
 
-- **Truth-state** — authoritative data whose source of truth is the server (domain models, records, counters, permissions)
-- **View-state** — ephemeral client concerns (which menu is open, which row is expanded, which tab has focus)
+- **Truth-state** -- authoritative data whose source of truth is the server (domain models, records, counters, permissions)
+- **View-state** -- ephemeral client concerns (which menu is open, which row is expanded, which tab has focus)
 
 Most frameworks *can* represent both, but they rarely enforce a practical boundary. Teams end up mixing "what the server says" with "what the UI is doing," then try to paper over races and stale views with **optimistic updates**. That creates flicker, mismatch, and user distrust.
 
@@ -21,9 +21,9 @@ Most frameworks *can* represent both, but they rarely enforce a practical bounda
 
 1. The **server** owns data integrity and business logic
 2. **Verity** is the **backend of the frontend**: it fetches, coalesces, tracks staleness, reacts to server **directives**, and exposes stable references to truth-state
-3. The **view layer** renders those references and manages local view-state—**without** fetching, caching, guessing, or coordinating invalidation
+3. The **view layer** renders those references and manages local view-state--**without** fetching, caching, guessing, or coordinating invalidation
 
-This separation isn't just conceptual—it shows up in Verity's public API, internal guarantees, and strict UX policy.
+This separation isn't just conceptual--it shows up in Verity's public API, internal guarantees, and strict UX policy.
 
 ## Core Principles
 
@@ -31,7 +31,7 @@ This separation isn't just conceptual—it shows up in Verity's public API, inte
 The UI changes **after** the server confirms change. Unknowns render as skeletons; work in progress renders as spinners. No temporary lies, no speculation.
 
 **Directive-Driven Updates**  
-Rather than pushing DOM or raw events, servers emit **semantic directives**—small, transport-agnostic messages that describe what should be refreshed. Directives decouple server logic from UI structure and compose beautifully: mutation responses provide immediate local echo, while **fan-out over SSE** keeps other tabs and devices consistent.
+Rather than pushing DOM or raw events, servers emit **semantic directives**--small, transport-agnostic messages that describe what should be refreshed. Directives decouple server logic from UI structure and compose beautifully: mutation responses provide immediate local echo, while **fan-out over SSE** keeps other tabs and devices consistent.
 
 **Levels & Minimal Fetching**  
 A single entity can be viewed at different detail levels (`simplified`, `expanded`). Verity lets you declare conversion graphs so one fetch can satisfy multiple levels without redundant network calls. When directives arrive, Verity computes the minimal set of refetches needed to return to truth.
@@ -40,94 +40,99 @@ A single entity can be viewed at different detail levels (`simplified`, `expande
 Verity exposes stable refs (`{ data, meta }`) and a subscribe API. Thin adapters wire that into Alpine, React, Vue, or Svelte with identical semantics. The value lives in the core, not the glue.
 
 **Honest by Design**  
-Perceived snappiness never justifies lying. If your product needs "instant echo," build endpoints that return the truth immediately—don't fake it in the client.
+Perceived snappiness never justifies lying. If your product needs "instant echo," build endpoints that return the truth immediately--don't fake it in the client.
 
-## Quick Start
+## Installation
 
-### No Build Tools? No Problem!
+### Via CDN (no build tools)
 
-Drop these script tags into your HTML and you're ready to go:
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <!-- Alpine.js -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
-  
-  <!-- Verity core -->
-  <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/lib/core.js"></script>
-  
-  <!-- Verity Alpine adapter -->
-  <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/adapters/alpine.js"></script>
-</head>
-<body>
-
-<!-- Your app -->
-<div x-data="verity.collection('todos')">
-  <template x-if="state.loading">
-    <p>Loading todos...</p>
-  </template>
-  <template x-for="todo in state.items" :key="todo.id">
-    <div x-text="todo.title"></div>
-  </template>
-</div>
-
-<!-- Verity setup -->
-<script>
-  // Initialize Verity
-  DL.init({
-    sse: { url: '/api/events' }
-  })
-  
-  // Register collections and types
-  DL.createCollection('todos', {
-    fetch: async (params) => {
-      const res = await fetch('/api/todos')
-      return res.json()  // { ids: [...], count: number }
-    }
-  })
-  
-  DL.createType('todo', {
-    fetch: async (id) => {
-      const res = await fetch(`/api/todos/${id}`)
-      return res.json()
-    }
-  })
-</script>
-
-</body>
-</html>
-```
-
-**For production, use the minified versions:**
+Drop a script tag and go. Works with jsDelivr, unpkg, or bundle.run:
 
 ```html
-<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/lib/core.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/adapters/alpine.min.js"></script>
+<!-- jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/dist/core.umd.js"></script>
+
+<!-- unpkg -->
+<script src="https://unpkg.com/verity-dl@latest/dist/core.umd.js"></script>
+
+<!-- bundle.run -->
+<script src="https://bundle.run/verity-dl@latest/dist/core.umd.js"></script>
 ```
 
-### Using npm (for build pipelines)
+The UMD build exposes `window.DLCore` globally.
 
-If you're using a bundler like Vite, Webpack, or Rollup:
+### Via npm / yarn (for bundlers)
 
 ```bash
+# npm
 npm install verity-dl
+
+# yarn
+yarn add verity-dl
 ```
 
 ```javascript
-import { init, createType, createCollection } from 'verity-dl/core'
-import { ensureAlpineStore } from 'verity-dl/adapters/alpine'
+// ESM import
+import { init, createType, createCollection, fetchItem } from 'verity-dl';
 
-// Initialize Verity
-init({ sse: { url: '/api/events' } })
-
-// Register your data
-createCollection('todos', { /* ... */ })
-createType('todo', { /* ... */ })
+// CommonJS require
+const { init, createType, createCollection, fetchItem } = require('verity-dl');
 ```
 
-### Run Examples Locally
+### TypeScript
+
+The package ships bundled type declarations. No `@types/` package needed.
+
+```typescript
+import {
+  init,
+  createType,
+  createCollection,
+  fetchItem,
+  fetchCollection,
+  onChange,
+  type ItemRef,
+  type CollectionRef,
+  type Directive,
+  type SseConfig,
+} from 'verity-dl';
+
+// Full IntelliSense and type safety out of the box
+createType('todo', {
+  fetch: async (id: unknown): Promise<{ id: string; title: string }> => {
+    const res = await fetch(`/api/todos/${id}`);
+    return res.json();
+  },
+  stalenessMs: 30_000,
+});
+```
+
+## Quick Start
+
+### Minimal example (no framework)
+
+```html
+<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/dist/core.umd.js"></script>
+<script>
+  DLCore.createCollection('todos', {
+    fetch: () => fetch('/api/todos').then(r => r.json()),
+  });
+
+  DLCore.createType('todo', {
+    fetch: (id) => fetch(`/api/todos/${id}`).then(r => r.json()),
+  });
+
+  DLCore.init({ sse: { url: '/api/events' } });
+
+  // Fetch and observe
+  const ref = DLCore.fetchCollection('todos');
+  DLCore.onChange(() => {
+    console.log('Todos:', ref.data, 'Loading:', ref.meta.isLoading);
+  });
+</script>
+```
+
+### Run examples locally
 
 The repository includes full-stack examples built with Flask:
 
@@ -142,7 +147,7 @@ python verity/examples/invoices_alpine/app.py
 python verity/examples/manufacturing_monitor/app.py
 ```
 
-### Explore Documentation
+### Explore documentation
 
 Visit [verity.yidi.sh](https://verity.yidi.sh) or run locally:
 
@@ -152,43 +157,19 @@ mkdocs serve
 
 Then open <http://127.0.0.1:8000> to dive into the mental model, guides, and API reference.
 
-### Debug with Devtools
-
-Add the visual debugging overlay to watch truth-state, directives, and SSE events in real-time:
-
-```html
-<!-- Add to development builds -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.css">
-<script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/verity/shared/static/devtools/devtools.js"></script>
-```
-
-**Usage:** Press `Ctrl+Shift+V` (or `Cmd+Shift+V` on Mac) to toggle the devtools overlay.
-
-[Complete Devtools Guide →](https://verity.yidi.sh/guides/getting-started.html#debugging-with-devtools)
-
 ## How This Differs from Alternatives
 
 ### vs htmx / LiveView / Turbo Streams
-✅ Server is the source of truth  
-❌ Server dictates DOM, tightly couples backend to view structure  
-**Verity** pushes **data intent** (directives) and keeps **view-state** client-owned
+Server is the source of truth, but server dictates DOM, tightly coupling backend to view structure.
+**Verity** pushes **data intent** (directives) and keeps **view-state** client-owned.
 
 ### vs TanStack Query / RTK Query / Apollo
-✅ Mature caches, good invalidation tooling, multi-framework support  
-❌ Optimistic updates are first-class; invalidation semantics are app-defined glue; no concept of levels + conversion planning; server doesn't author the invalidation contract  
-**Verity** bakes invalidation semantics into a **server-authored contract** and plans minimal refetches
+Mature caches with good invalidation tooling and multi-framework support, but optimistic updates are first-class, invalidation semantics are app-defined glue, and there is no concept of levels + conversion planning.
+**Verity** bakes invalidation semantics into a **server-authored contract** and plans minimal refetches.
 
 ### vs Roll-Your-Own Store + Fetch
-✅ Maximum control  
-❌ Re-implement coalescing, latest-wins, push integration, multi-client convergence, and UX semantics—again and again  
-**Verity** exists to be the boring, correct default
-
-## What's Included
-
-- **`verity/`** — Flask helpers, JavaScript core, and multi-framework adapters
-- **`verity/examples/`** — Production-scale demos for Alpine, React, and Vue, plus "baseline" builds that skip Verity so you can compare behaviors
-- **`docs/`** — MkDocs documentation covering the mental model, directive contract, API surface, and example walkthroughs
-- **`.github/workflows/docs.yml`** — GitHub Action that deploys the docs site to GitHub Pages
+Maximum control, but you re-implement coalescing, latest-wins, push integration, multi-client convergence, and UX semantics every time.
+**Verity** exists to be the boring, correct default.
 
 ## Design Guarantees
 
@@ -200,9 +181,40 @@ Add the visual debugging overlay to watch truth-state, directives, and SSE event
 
 ## When to Use Verity
 
-Use Verity where **server truth matters**—shared, audited, multi-client data. Keep purely local UIs (menus, focus, modals) in your framework's own state.
+Use Verity where **server truth matters**--shared, audited, multi-client data. Keep purely local UIs (menus, focus, modals) in your framework's own state.
 
 **Smell test:** if changing tabs or reloading should reset it, it's probably view-state. If a coworker on another device must see it, it's truth-state.
+
+## Development
+
+```bash
+# Install dependencies
+corepack enable
+yarn install
+
+# Run all checks (typecheck + lint + test)
+yarn check
+
+# Individual commands
+yarn typecheck      # TypeScript type checking
+yarn lint           # ESLint
+yarn test           # Vitest
+yarn build          # Vite production build
+```
+
+## Repository Layout
+
+```text
+src/
+  core/               # TypeScript source (modular)
+  adapters/           # Framework adapters (Alpine, React, Vue, Svelte)
+  devtools/           # In-browser devtools panel
+dist/                 # Built output (ESM, UMD, .d.ts)
+tests/                # Vitest test suite
+verity/
+  examples/           # Full-stack Flask reference applications
+docs/                 # MkDocs content (philosophy, guides, reference)
+```
 
 ## Next Steps
 
@@ -211,19 +223,6 @@ Use Verity where **server truth matters**—shared, audited, multi-client data. 
 3. Explore [Truth-State vs View-State](https://verity.yidi.sh/concepts/truth-vs-view-state) to master the core distinction
 4. Follow [Getting Started](https://verity.yidi.sh/guides/getting-started) to wire Verity into a new project
 5. Study the [examples](https://verity.yidi.sh/examples) to see patterns in action
-
-## Repository Layout
-
-```text
-verity/
-├─ shared/            # Static assets (core library, adapters, devtools)
-└─ examples/          # Full-stack reference applications
-docs/                 # MkDocs content (philosophy, guides, reference, examples)
-mkdocs.yml            # MkDocs configuration
-CONTRIBUTING.md       # Contribution guide
-LICENSE               # MIT License
-requirements.txt      # Runtime dependencies
-```
 
 ## License
 
