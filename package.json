@@ -21,8 +21,9 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "pretest": "vite build",
     "test": "vitest run",
-    "test:watch": "vitest",
+    "test:watch": "vite build && vitest",
     "check": "yarn typecheck && yarn lint && yarn test"
   },
   "keywords": [

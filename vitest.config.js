@@ -7,7 +7,7 @@ export default defineConfig({
     include: ["tests/**/*.test.{js,ts}"],
     coverage: {
       provider: "v8",
-      include: ["verity/shared/static/**/*.js"],
+      include: ["src/**/*.ts"],
     },
     // Each test file gets a fresh module scope, but we need to reset
     // the global DLCore singleton between tests
