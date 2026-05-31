@@ -31,7 +31,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
           cache: 'yarn'
+
+      - name: Ensure npm 11.5.1+ for trusted publishing
+        run: npm install -g npm@latest && npm --version
 
       - name: Install dependencies
         run: yarn install --immutable
@@ -66,9 +70,7 @@ jobs:
         run: yarn vitest run
 
       - name: Publish to npm (trusted publishing via OIDC)
-        run: |
-          npm config set registry https://registry.npmjs.org/
-          npm publish --provenance --access public
+        run: npm publish --access public
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
