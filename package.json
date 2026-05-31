@@ -1,6 +1,6 @@
 {
   "name": "verity-dl",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth",
   "type": "module",
   "main": "./dist/core.umd.js",
@@ -11,18 +11,44 @@
       "types": "./dist/core/index.d.ts",
       "import": "./dist/core.mjs",
       "require": "./dist/core.umd.js"
-    }
+    },
+    "./adapters/alpine": {
+      "import": "./dist/adapters/alpine.js",
+      "require": "./dist/adapters/alpine.js",
+      "default": "./dist/adapters/alpine.js"
+    },
+    "./adapters/react": {
+      "import": "./dist/adapters/react.js",
+      "require": "./dist/adapters/react.js",
+      "default": "./dist/adapters/react.js"
+    },
+    "./adapters/vue": {
+      "import": "./dist/adapters/vue.js",
+      "require": "./dist/adapters/vue.js",
+      "default": "./dist/adapters/vue.js"
+    },
+    "./adapters/svelte": {
+      "import": "./dist/adapters/svelte.js",
+      "require": "./dist/adapters/svelte.js",
+      "default": "./dist/adapters/svelte.js"
+    },
+    "./devtools": {
+      "import": "./dist/devtools/devtools.js",
+      "require": "./dist/devtools/devtools.js",
+      "default": "./dist/devtools/devtools.js"
+    },
+    "./devtools/style.css": "./dist/devtools/devtools.css"
   },
   "files": [
     "dist/"
   ],
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/post-build.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "test": "vite build && vitest run",
-    "test:watch": "vite build && vitest",
+    "test": "yarn build && vitest run",
+    "test:watch": "yarn build && vitest",
     "check": "yarn typecheck && yarn lint && yarn build && vitest run"
   },
   "keywords": [
