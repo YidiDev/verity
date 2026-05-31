@@ -26,12 +26,11 @@ export default defineConfig({
     lib: {
       entry: {
         core: resolve(__dirname, "src/core/index.ts"),
-        // Adapters and devtools will be added as converted:
-        // react: resolve(__dirname, "src/adapters/react.ts"),
-        // vue: resolve(__dirname, "src/adapters/vue.ts"),
-        // svelte: resolve(__dirname, "src/adapters/svelte.ts"),
-        // alpine: resolve(__dirname, "src/adapters/alpine.ts"),
-        // devtools: resolve(__dirname, "src/devtools/index.ts"),
+        "adapters/alpine": resolve(__dirname, "src/adapters/alpine.ts"),
+        "adapters/react": resolve(__dirname, "src/adapters/react.ts"),
+        "adapters/vue": resolve(__dirname, "src/adapters/vue.ts"),
+        "adapters/svelte": resolve(__dirname, "src/adapters/svelte.ts"),
+        "devtools/devtools": resolve(__dirname, "src/devtools/index.ts"),
       },
       name: "DLCore",
       formats: ["es", "umd"],

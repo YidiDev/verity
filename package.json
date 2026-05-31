@@ -13,29 +13,29 @@
       "require": "./dist/core.umd.js"
     },
     "./adapters/alpine": {
-      "import": "./dist/adapters/alpine.js",
-      "require": "./dist/adapters/alpine.js",
-      "default": "./dist/adapters/alpine.js"
+      "types": "./dist/adapters/alpine.d.ts",
+      "import": "./dist/adapters/alpine.mjs",
+      "require": "./dist/adapters/alpine.umd.js"
     },
     "./adapters/react": {
-      "import": "./dist/adapters/react.js",
-      "require": "./dist/adapters/react.js",
-      "default": "./dist/adapters/react.js"
+      "types": "./dist/adapters/react.d.ts",
+      "import": "./dist/adapters/react.mjs",
+      "require": "./dist/adapters/react.umd.js"
     },
     "./adapters/vue": {
-      "import": "./dist/adapters/vue.js",
-      "require": "./dist/adapters/vue.js",
-      "default": "./dist/adapters/vue.js"
+      "types": "./dist/adapters/vue.d.ts",
+      "import": "./dist/adapters/vue.mjs",
+      "require": "./dist/adapters/vue.umd.js"
     },
     "./adapters/svelte": {
-      "import": "./dist/adapters/svelte.js",
-      "require": "./dist/adapters/svelte.js",
-      "default": "./dist/adapters/svelte.js"
+      "types": "./dist/adapters/svelte.d.ts",
+      "import": "./dist/adapters/svelte.mjs",
+      "require": "./dist/adapters/svelte.umd.js"
     },
     "./devtools": {
-      "import": "./dist/devtools/devtools.js",
-      "require": "./dist/devtools/devtools.js",
-      "default": "./dist/devtools/devtools.js"
+      "types": "./dist/devtools/devtools.d.ts",
+      "import": "./dist/devtools/devtools.mjs",
+      "require": "./dist/devtools/devtools.umd.js"
     },
     "./devtools/style.css": "./dist/devtools/devtools.css"
   },
@@ -43,7 +43,7 @@
     "dist/"
   ],
   "scripts": {
-    "build": "vite build && node scripts/post-build.js",
+    "build": "node scripts/build.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
