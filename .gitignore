@@ -304,7 +304,7 @@ dist
 # Stores VSCode versions used for testing VSCode extensions
 .vscode-test
 
-# yarn v3
+# Yarn Berry
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -312,6 +312,10 @@ dist
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Package lock files (we use yarn.lock)
+package-lock.json
+pnpm-lock.yaml
 
 # Vite files
 vite.config.js.timestamp-*

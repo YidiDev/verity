@@ -12,8 +12,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
 
     <!-- Library core first, then framework adapter + app registration, then Alpine -->
-    <script src="{{ url_for('verity_shared_static.static', filename='lib/core.js') }}" defer></script>
-    <script src="{{ url_for('verity_shared_static.static', filename='adapters/alpine.js') }}" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/verity-dl@latest/dist/core.umd.js" defer></script>
+    <script src="{{ url_for('static', filename='adapters/alpine.js') }}" defer></script>
     <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 
     <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
@@ -27,7 +27,7 @@
                 if (window.__VDL_DEVTOOLS_LOADING__) return;
                 window.__VDL_DEVTOOLS_LOADING__ = true;
                 const script = document.createElement('script');
-                script.src = "{{ url_for('verity_shared_static.static', filename='devtools/devtools.js') }}";
+                script.src = "https://cdn.jsdelivr.net/npm/verity-dl@latest/dist/devtools.umd.js";
                 script.defer = true;
                 document.head.appendChild(script);
             };
