@@ -1,0 +1,12 @@
+# Default: all changes require review from maintainer
+* @YidiDev
+
+# Core library — extra attention
+/src/core/ @YidiDev
+
+# CI/CD and security configuration
+/.github/ @YidiDev
+
+# Package manifest and dependency changes
+/package.json @YidiDev
+/yarn.lock @YidiDev
