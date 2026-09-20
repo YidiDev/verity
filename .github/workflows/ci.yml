@@ -14,6 +14,28 @@ permissions:
   contents: read
 
 jobs:
+  audit:
+    name: Audit dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Audit dependencies
+        run: yarn npm audit --severity moderate
+
   check:
     name: Typecheck, Lint, Build & Test
     runs-on: ubuntu-latest
@@ -37,9 +59,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
-      - name: Audit dependencies
-        run: yarn npm audit --severity moderate
-
       - name: Typecheck
         run: yarn typecheck
 
@@ -54,10 +73,50 @@ jobs:
 
       - name: Verify dist output
         run: |
-          test -f dist/core.mjs || (echo "Missing dist/core.mjs" && exit 1)
-          test -f dist/core.umd.js || (echo "Missing dist/core.umd.js" && exit 1)
-          test -f dist/core/index.d.ts || (echo "Missing dist/core/index.d.ts" && exit 1)
+          for file in \
+            dist/core.mjs \
+            dist/core.umd.js \
+            dist/core.cjs \
+            dist/core/index.d.ts \
+            dist/core/index.d.cts \
+            dist/adapters/alpine.mjs \
+            dist/adapters/alpine.umd.js \
+            dist/adapters/alpine.cjs \
+            dist/adapters/alpine.d.ts \
+            dist/adapters/alpine.d.cts \
+            dist/adapters/react.mjs \
+            dist/adapters/react.umd.js \
+            dist/adapters/react.cjs \
+            dist/adapters/react.d.ts \
+            dist/adapters/react.d.cts \
+            dist/adapters/vue.mjs \
+            dist/adapters/vue.umd.js \
+            dist/adapters/vue.cjs \
+            dist/adapters/vue.d.ts \
+            dist/adapters/vue.d.cts \
+            dist/adapters/svelte.mjs \
+            dist/adapters/svelte.umd.js \
+            dist/adapters/svelte.cjs \
+            dist/adapters/svelte.d.ts \
+            dist/adapters/svelte.d.cts \
+            dist/devtools/devtools.mjs \
+            dist/devtools/devtools.umd.js \
+            dist/devtools/devtools.cjs \
+            dist/devtools/index.d.ts \
+            dist/devtools/index.d.cts \
+            dist/devtools/devtools.css
+          do
+            test -f "$file" || (echo "Missing $file" && exit 1)
+          done
           echo "All expected build outputs present"
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
+      - name: Verify package entrypoints
+        run: |
+          node -e "for (const id of ['verity-dl', 'verity-dl/adapters/alpine', 'verity-dl/adapters/vue', 'verity-dl/devtools']) require(id)"
+          node --input-type=module -e "for (const id of ['verity-dl', 'verity-dl/adapters/alpine', 'verity-dl/adapters/vue', 'verity-dl/devtools']) await import(id)"
 
       - name: Upload build artifacts
         if: matrix.node-version == '22'

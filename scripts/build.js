@@ -15,16 +15,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
 const entries = [
-  { name: "core", entry: "src/core/index.ts", global: "DLCore" },
-  { name: "adapters/alpine", entry: "src/adapters/alpine.ts", global: "DLAdapters.Alpine" },
-  { name: "adapters/react", entry: "src/adapters/react.ts", global: "DLAdapters.React" },
-  { name: "adapters/vue", entry: "src/adapters/vue.ts", global: "DLAdapters.Vue" },
-  { name: "adapters/svelte", entry: "src/adapters/svelte.ts", global: "DLAdapters.Svelte" },
-  { name: "devtools/devtools", entry: "src/devtools/index.ts", global: "VerityDevtools" },
+  { name: "core", entry: "src/core/index.ts", types: "core/index", global: "DLCore" },
+  { name: "adapters/alpine", entry: "src/adapters/alpine.ts", types: "adapters/alpine", global: "DLAdapters.Alpine" },
+  { name: "adapters/react", entry: "src/adapters/react.ts", types: "adapters/react", global: "DLAdapters.React" },
+  { name: "adapters/vue", entry: "src/adapters/vue.ts", types: "adapters/vue", global: "DLAdapters.Vue" },
+  { name: "adapters/svelte", entry: "src/adapters/svelte.ts", types: "adapters/svelte", global: "DLAdapters.Svelte" },
+  { name: "devtools/devtools", entry: "src/devtools/index.ts", types: "devtools/index", global: "VerityDevtools" },
 ];
 
 for (let i = 0; i < entries.length; i++) {
-  const { name, entry, global } = entries[i];
+  const { name, entry, types, global } = entries[i];
   const isFirst = i === 0;
 
   console.log(`\nBuilding ${name}...`);
@@ -70,6 +70,15 @@ for (let i = 0; i < entries.length; i++) {
     },
     logLevel: "warn",
   });
+
+  cpSync(
+    resolve(root, `dist/${name}.umd.js`),
+    resolve(root, `dist/${name}.cjs`),
+  );
+  cpSync(
+    resolve(root, `dist/${types}.d.ts`),
+    resolve(root, `dist/${types}.d.cts`),
+  );
 }
 
 // Copy devtools CSS
