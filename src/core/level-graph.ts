@@ -30,6 +30,9 @@ export function applyFetchedLevel(
   const nextLevelStamps: Record<string, string | null> = {
     ...ref.meta.levelStamps,
   };
+  const nextLevelFailureStamps: Record<string, string | null> = {
+    ...(ref.meta.levelFailureStamps || {}),
+  };
 
   const levelSatisfies = (levelKey: string): boolean => {
     const cfg =
@@ -54,12 +57,14 @@ export function applyFetchedLevel(
     if (!levelSatisfies(levelKey)) return false;
 
     nextLevelStamps[levelKey] = timestamp;
+    delete nextLevelFailureStamps[levelKey];
     queue.push(levelKey);
     return true;
   };
 
   // Always stamp the source level
   nextLevelStamps[sourceLevelKey] = timestamp;
+  delete nextLevelFailureStamps[sourceLevelKey];
   enqueueIfSatisfied(sourceLevelKey);
 
   // BFS through conversion edges
@@ -78,6 +83,7 @@ export function applyFetchedLevel(
     error: null,
     lastFetchedAny: timestamp,
     levelStamps: nextLevelStamps,
+    levelFailureStamps: nextLevelFailureStamps,
     isLoading: false, // Fetch completed successfully, clear loading state
   };
 

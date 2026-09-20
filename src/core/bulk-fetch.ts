@@ -8,7 +8,7 @@ import { emitLifecycle } from "./lifecycle.js";
 import {
   assignRef,
   isLevelActive,
-  finalizeItemMeta,
+  finalizeItemFailureMeta,
   applyFetchedLevel,
 } from "./helpers.js";
 import type { BulkFetchFn, ItemFetchFn, ItemRef } from "./types.js";
@@ -208,9 +208,12 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
       }
 
       if (bulkError) {
-        const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
-          error: String(bulkError),
-        });
+        const nextMeta = finalizeItemFailureMeta(
+          ref,
+          canonicalLevel,
+          qid,
+          bulkError,
+        );
         assignRef(ref, { meta: nextMeta });
         emitLifecycle("item:fetch:error", {
           typeName: bucket.typeName,
@@ -238,9 +241,12 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
           data = await bucket.fallbackFetcher(id, levelArg);
         } catch (fallbackErr) {
           if (isLevelActive(ref.meta, canonicalLevel, qid)) {
-            const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
-              error: String(fallbackErr),
-            });
+            const nextMeta = finalizeItemFailureMeta(
+              ref,
+              canonicalLevel,
+              qid,
+              fallbackErr,
+            );
             assignRef(ref, { meta: nextMeta });
             emitLifecycle("item:fetch:error", {
               typeName: bucket.typeName,
@@ -291,9 +297,12 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
           strategy: "bulk",
         });
       } else {
-        const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
-          error: "Bulk fetch missing data",
-        });
+        const nextMeta = finalizeItemFailureMeta(
+          ref,
+          canonicalLevel,
+          qid,
+          "Bulk fetch missing data",
+        );
         assignRef(ref, { meta: nextMeta });
         emitLifecycle("item:fetch:error", {
           typeName: bucket.typeName,
@@ -307,9 +316,12 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
       }
     } catch (err) {
       if (ref && ref.meta && isLevelActive(ref.meta, canonicalLevel, qid)) {
-        const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
-          error: String(err),
-        });
+        const nextMeta = finalizeItemFailureMeta(
+          ref,
+          canonicalLevel,
+          qid,
+          err,
+        );
         assignRef(ref, { meta: nextMeta });
         emitLifecycle("item:fetch:error", {
           typeName: bucket.typeName,

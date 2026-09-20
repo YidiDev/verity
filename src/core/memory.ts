@@ -97,6 +97,7 @@ function evictCollectionEntry(
         error: null,
         activeQueryId: null,
         lastFetched: null,
+        lastFailedAt: null,
         lastUsedAt: null,
       },
     });
@@ -122,6 +123,7 @@ function evictItemEntry(typeName: string, id: string, ref: ItemRef): void {
         activeQueryId: null,
         lastFetchedAny: null,
         levelStamps: {},
+        levelFailureStamps: {},
         lastUsedAt: null,
         activeLevelQueryIds: Object.create(null) as Record<string, string | undefined>,
       },

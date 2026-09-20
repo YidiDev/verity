@@ -88,6 +88,7 @@ export interface CollectionData {
 export interface CollectionMeta {
   isLoading: boolean;
   lastFetched: string | null;
+  lastFailedAt?: string | null;
   error: string | null;
   activeQueryId: string | null;
   paramsSnapshot: unknown;
@@ -110,6 +111,7 @@ export type CollectionFetchFn = (
 export interface CollectionEntry {
   fetch: CollectionFetchFn;
   stalenessMs: number;
+  errorRetryMs: number;
   /** The default-params ref (always keyed as PARAM_DEFAULT_KEY). */
   ref: CollectionRef;
   /** All parameterised refs keyed by paramsKey. */
@@ -124,6 +126,7 @@ export interface ItemMeta {
   activeQueryId: string | null;
   lastFetchedAny: string | null;
   levelStamps: Record<string, string | null>;
+  levelFailureStamps?: Record<string, string | null>;
   lastUsedAt: string | null;
   activeLevelQueryIds: Record<string, string | undefined>;
 }
@@ -152,6 +155,7 @@ export interface LevelConfig {
   fetch: ItemFetchFn;
   check: (data: unknown) => boolean;
   stalenessMs: number;
+  errorRetryMs: number;
   bulkFetch: BulkFetchFn | null;
 }
 
@@ -160,6 +164,7 @@ export interface TypeEntry {
   fetch: ItemFetchFn;
   bulkFetch: BulkFetchFn | null;
   stalenessMs: number;
+  errorRetryMs: number;
   levels: Record<string, LevelConfig>;
   items: Map<string, ItemRef>;
   /** Maps a source level-key → set of target level-keys it can convert to. */
@@ -344,6 +349,7 @@ export interface CreateTypeOptions {
   fetch: ItemFetchFn;
   bulkFetch?: BulkFetchFn | null;
   stalenessMs?: number;
+  errorRetryMs?: number;
   levelConversionMap?: Record<string, LevelConversionEntry>;
   levels?: Record<string, CreateTypeLevelOptions>;
 }
@@ -361,6 +367,7 @@ export interface CreateTypeLevelOptions {
   fetch: ItemFetchFn;
   checkIfExists?: (data: unknown) => boolean;
   stalenessMs?: number;
+  errorRetryMs?: number;
   bulkFetch?: BulkFetchFn | null;
   levelConversionMap?: Record<string, LevelConversionEntry>;
 }
@@ -369,6 +376,7 @@ export interface CreateTypeLevelOptions {
 export interface CreateCollectionOptions {
   fetch: CollectionFetchFn;
   stalenessMs?: number;
+  errorRetryMs?: number;
 }
 
 /** Options accepted by `fetchItem()`. */

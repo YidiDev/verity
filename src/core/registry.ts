@@ -6,6 +6,7 @@ import { G } from "./state.js";
 import {
   PARAM_DEFAULT_KEY,
   LEVEL_DEFAULT,
+  DEFAULT_ERROR_RETRY_MS,
   toLevelKey,
   defaultCheck,
 } from "./constants.js";
@@ -27,11 +28,12 @@ export function createType(name: string, options: CreateTypeOptions): void {
     fetch,
     bulkFetch = null,
     stalenessMs = 15_000,
+    errorRetryMs = DEFAULT_ERROR_RETRY_MS,
     levelConversionMap = {},
     levels = {},
   } = options;
 
-  const lvl: Record<string, { name: string; fetch: typeof fetch; check: (d: unknown) => boolean; stalenessMs: number; bulkFetch: typeof bulkFetch }> = {};
+  const lvl: Record<string, { name: string; fetch: typeof fetch; check: (d: unknown) => boolean; stalenessMs: number; errorRetryMs: number; bulkFetch: typeof bulkFetch }> = {};
   const convertFrom = new Map<string, Set<string>>();
   const accepts = new Map<string, Set<string>>();
 
@@ -106,6 +108,7 @@ export function createType(name: string, options: CreateTypeOptions): void {
       fetch: cfg.fetch,
       check: cfg.checkIfExists || defaultCheck,
       stalenessMs: cfg.stalenessMs ?? stalenessMs,
+      errorRetryMs: cfg.errorRetryMs ?? errorRetryMs,
       bulkFetch: typeof cfg.bulkFetch === "function" ? cfg.bulkFetch : null,
     };
     if (cfg.levelConversionMap) {
@@ -119,6 +122,7 @@ export function createType(name: string, options: CreateTypeOptions): void {
     fetch,
     bulkFetch: typeof bulkFetch === "function" ? bulkFetch : null,
     stalenessMs,
+    errorRetryMs,
     levels: lvl,
     items: new Map(),
     convertFrom,
@@ -138,13 +142,18 @@ export function createCollection(
   if (G.collections.has(name))
     {throw new Error(`Collection '${name}' already exists`);}
 
-  const { fetch, stalenessMs = 15_000 } = options;
+  const {
+    fetch,
+    stalenessMs = 15_000,
+    errorRetryMs = DEFAULT_ERROR_RETRY_MS,
+  } = options;
 
   const ref = {
     data: { ids: [] as unknown[], count: 0, meta: null as unknown, items: null as unknown },
     meta: {
       isLoading: false,
       lastFetched: null,
+      lastFailedAt: null,
       error: null,
       activeQueryId: null,
       paramsSnapshot: {} as unknown,
@@ -153,5 +162,5 @@ export function createCollection(
     },
   };
   const refs = new Map([[PARAM_DEFAULT_KEY, ref]]);
-  G.collections.set(name, { fetch, stalenessMs, ref, refs });
+  G.collections.set(name, { fetch, stalenessMs, errorRetryMs, ref, refs });
 }

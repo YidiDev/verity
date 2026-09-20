@@ -40,6 +40,12 @@ graph LR
 
 **Adapters expose truth-state. Components manage view-state.**
 
+### Reactive Reads and Retries
+
+Alpine getters and Vue computed or render functions may safely call `it()` and `col()`. When a fetch fails, Verity keeps the error state settled for the type, level, or collection's `errorRetryMs` cooldown instead of starting another request on every reactive read.
+
+Use `{ force: true }` only for imperative refreshes, such as a Retry button. Keeping `force: true` inside a getter or render function intentionally starts a request after every completion and cannot settle.
+
 ---
 
 ## Alpine.js

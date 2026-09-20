@@ -185,12 +185,14 @@ interface TypeConfig {
   fetch: (id: string | number) => Promise<any>  // Fetch single item by ID
   bulkFetch?: (ids: (string | number)[], level?: string) => Promise<any[]>  // Optional bulk fetch
   stalenessMs?: number                            // Per-type staleness (default: 15000)
+  errorRetryMs?: number                           // Failed-fetch cooldown (default: 30000)
   levelConversionMap?: { [level: string]: string[] }  // Level conversion rules
   levels?: {
     [levelName: string]: {
       fetch: (id: string | number) => Promise<any>
       checkIfExists?: (data: any) => boolean
       stalenessMs?: number
+      errorRetryMs?: number
       bulkFetch?: (ids: (string | number)[], level?: string) => Promise<any[]>
       levelConversionMap?: { [level: string]: string[] }
     }
@@ -252,6 +254,10 @@ DL.createType('current_user', {
   stalenessMs: 300000
 })
 ```
+
+#### `errorRetryMs` (optional)
+
+Cooldown in milliseconds before a normal read may retry a failed fetch. The default is 30000 (30 seconds). This prevents reactive render paths from immediately re-arming a rejected request. Use `{ force: true }` for an explicit retry, such as from a Retry button.
 
 #### `levels` (optional)
 
@@ -347,6 +353,7 @@ function createCollection(name: string, config: CollectionConfig): void
 interface CollectionConfig {
   fetch: (params?: any) => Promise<{ ids: any[], count?: number }>  // Fetch function
   stalenessMs?: number  // Per-collection staleness (default: 15000)
+  errorRetryMs?: number // Failed-fetch cooldown (default: 30000)
 }
 ```
 
@@ -398,6 +405,10 @@ DL.createCollection('archived_orders', {
 })
 ```
 
+#### `errorRetryMs` (optional)
+
+Cooldown in milliseconds before a normal read may retry a failed collection fetch. The default is 30000 (30 seconds). Parameterized collection refs track failures independently.
+
 ### Example
 
 ```javascript
@@ -442,8 +453,10 @@ interface ItemReference {
   data: any | null
   meta: {
     isLoading: boolean
-    lastFetched: string | null  // ISO timestamp
-    error: Error | null
+    lastFetchedAny: string | null
+    levelStamps: Record<string, string | null>
+    levelFailureStamps: Record<string, string | null>
+    error: string | null
     activeQueryId: string | null
     lastUsedAt: string | null
   }
@@ -466,8 +479,10 @@ interface ItemReference {
   data: any | null              // The fetched item data
   meta: {
     isLoading: boolean          // true while fetching
-    lastFetched: string | null  // ISO timestamp of last fetch
-    error: Error | null         // Last error, if any
+    lastFetchedAny: string | null // ISO timestamp of last successful fetch
+    levelStamps: Record<string, string | null>
+    levelFailureStamps: Record<string, string | null>
+    error: string | null          // String form of the last error
     activeQueryId: string       // Unique query ID
     lastUsedAt: string          // ISO timestamp of last access
   }
@@ -503,6 +518,8 @@ const freshUserRef = DL.fetchItem('user', 123, null, { force: true })
 // Silent background fetch
 const bgUserRef = DL.fetchItem('user', 123, null, { silent: true })
 ```
+
+After a fetch fails, ordinary reads return the settled error state during the configured `errorRetryMs` cooldown. Call `fetchItem(..., { force: true })` from an event handler to retry immediately. Do not keep `force: true` inside a reactive getter or render function because it intentionally requests a fetch on every read.
 
 ### Reactivity
 
@@ -547,7 +564,8 @@ interface CollectionReference {
   meta: {
     isLoading: boolean
     lastFetched: string | null  // ISO timestamp
-    error: Error | null
+    lastFailedAt: string | null // ISO timestamp of the last failed fetch
+    error: string | null
     activeQueryId: string | null
     paramsSnapshot: any         // Params used for this fetch
     paramsKey: string           // Cache key for params
@@ -574,7 +592,8 @@ interface CollectionReference {
   meta: {
     isLoading: boolean          // true while fetching
     lastFetched: string | null  // ISO timestamp of last fetch
-    error: Error | null         // Last error, if any
+    lastFailedAt: string | null // ISO timestamp of last failed fetch
+    error: string | null        // String form of the last error
     activeQueryId: string       // Unique query ID
     paramsSnapshot: any         // Params used for this fetch
     paramsKey: string           // Cache key for params

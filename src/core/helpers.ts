@@ -15,6 +15,7 @@ export {
   hasAnyActiveLevels,
   isLevelActive,
   finalizeItemMeta,
+  finalizeItemFailureMeta,
   parseMetaTimestamp,
 } from "./ref-helpers.js";
 

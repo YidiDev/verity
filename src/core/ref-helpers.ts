@@ -72,6 +72,7 @@ export function ensureItemRef(typeName: string, id: unknown): ItemRef {
         activeQueryId: null,
         lastFetchedAny: null,
         levelStamps: Object.create(null) as Record<string, string | null>,
+        levelFailureStamps: Object.create(null) as Record<string, string | null>,
         lastUsedAt: now,
         activeLevelQueryIds: Object.create(null) as Record<
           string,
@@ -222,6 +223,22 @@ export function finalizeItemMeta(
   }
 
   return next;
+}
+
+/** Finalizes a failed item fetch and records a per-level retry cooldown. */
+export function finalizeItemFailureMeta(
+  ref: ItemRef,
+  canonicalLevel: string,
+  qid: string,
+  error: unknown,
+): ItemMeta {
+  return finalizeItemMeta(ref, canonicalLevel, qid, {
+    error: String(error),
+    levelFailureStamps: {
+      ...(ref.meta.levelFailureStamps || {}),
+      [canonicalLevel]: nowISO(),
+    },
+  });
 }
 
 // ---- Parse timestamp helper -----------------------------------------------
