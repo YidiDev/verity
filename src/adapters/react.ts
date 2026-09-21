@@ -5,8 +5,12 @@
 import {
   init as coreInit,
   onChange as coreOnChange,
+  onRefChange as coreOnRefChange,
+  getRefRevision,
   fetchCollection,
   fetchItem,
+  getCollectionRef,
+  getItemRef,
   state as coreState,
   createType,
   createCollection,
@@ -175,6 +179,13 @@ function subscribe(listener: () => void): () => void {
   return coreOnChange(listener);
 }
 
+function subscribeRef(
+  ref: CollectionRef | ItemRef,
+  listener: () => void,
+): () => void {
+  return coreOnRefChange(ref, listener);
+}
+
 // ---- Init wrapper ---------------------------------------------------------
 
 export function init(options: InitOptions = {}): void {
@@ -188,44 +199,29 @@ export function useCollection(
   options: FetchCollectionOptions = {},
 ): CollectionRef {
   const React = ensureReact();
-  const { useRef, useEffect, useMemo, useSyncExternalStore } = React;
+  const { useEffect, useMemo, useSyncExternalStore } = React;
 
   const signature = buildCollectionSignature(name, options);
   const normalizedOptions = useMemo(
     () => normalizeCollectionOptions(options),
     [signature],
   );
-  const holderRef = useRef<{ key: string | null; ref: CollectionRef | null }>({
-    key: null,
-    ref: null,
-  });
-
-  const getSnapshot = useMemo(() => {
-    return (): CollectionRef => {
-      if (
-        !holderRef.current.ref ||
-        holderRef.current.key !== signature
-      ) {
-        holderRef.current = {
-          key: signature,
-          ref: fetchCollection(name, normalizedOptions),
-        };
-      }
-      return holderRef.current.ref!;
-    };
-  }, [signature, name, normalizedOptions]);
+  const ref = getCollectionRef(name, normalizedOptions);
 
   useEffect(() => {
-    const current = holderRef.current;
-    if (!current.ref || current.key !== signature) {
-      holderRef.current = {
-        key: signature,
-        ref: fetchCollection(name, normalizedOptions),
-      };
-    }
+    fetchCollection(name, normalizedOptions);
   }, [signature, name, normalizedOptions]);
 
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const subscribeToRef = useMemo(
+    () => (listener: () => void) => subscribeRef(ref, listener),
+    [ref],
+  );
+  const getVersion = useMemo(
+    () => () => getRefRevision(ref),
+    [ref],
+  );
+  useSyncExternalStore(subscribeToRef, getVersion, getVersion);
+  return ref;
 }
 
 export function useItem(
@@ -235,45 +231,30 @@ export function useItem(
   options: FetchItemOptions = {},
 ): ItemRef {
   const React = ensureReact();
-  const { useRef, useEffect, useMemo, useSyncExternalStore } = React;
+  const { useEffect, useMemo, useSyncExternalStore } = React;
 
   const signature = buildItemSignature(typeName, id, level, options);
   const normalizedOptions = useMemo(
     () => normalizeItemOptions(options),
     [signature],
   );
-  const holderRef = useRef<{ key: string | null; ref: ItemRef | null }>({
-    key: null,
-    ref: null,
-  });
   const levelArg = level == null ? null : level;
-
-  const getSnapshot = useMemo(() => {
-    return (): ItemRef => {
-      if (
-        !holderRef.current.ref ||
-        holderRef.current.key !== signature
-      ) {
-        holderRef.current = {
-          key: signature,
-          ref: fetchItem(typeName, id, levelArg, normalizedOptions),
-        };
-      }
-      return holderRef.current.ref!;
-    };
-  }, [signature, typeName, id, levelArg, normalizedOptions]);
+  const ref = getItemRef(typeName, id);
 
   useEffect(() => {
-    const current = holderRef.current;
-    if (!current.ref || current.key !== signature) {
-      holderRef.current = {
-        key: signature,
-        ref: fetchItem(typeName, id, levelArg, normalizedOptions),
-      };
-    }
+    fetchItem(typeName, id, levelArg, normalizedOptions);
   }, [signature, typeName, id, levelArg, normalizedOptions]);
 
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const subscribeToRef = useMemo(
+    () => (listener: () => void) => subscribeRef(ref, listener),
+    [ref],
+  );
+  const getVersion = useMemo(
+    () => () => getRefRevision(ref),
+    [ref],
+  );
+  useSyncExternalStore(subscribeToRef, getVersion, getVersion);
+  return ref;
 }
 
 export function useDLState<T = unknown>(
@@ -296,6 +277,7 @@ export function useDLState<T = unknown>(
 
 export {
   subscribe,
+  subscribeRef,
   coreOnChange as onChange,
   fetchCollection,
   fetchItem,
