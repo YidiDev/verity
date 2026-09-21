@@ -55,6 +55,7 @@ export function applyFetchedLevel(
   };
 
   const visited = new Set<string>();
+  const stampedLevels = new Set<string>([sourceLevelKey]);
   const queue: string[] = [];
 
   const enqueueIfSatisfied = (levelKey: string): boolean => {
@@ -66,6 +67,7 @@ export function applyFetchedLevel(
     nextLevelStamps[levelKey] = timestamp;
     delete nextLevelFailureStamps[levelKey];
     delete nextLevelErrors[levelKey];
+    stampedLevels.add(levelKey);
     queue.push(levelKey);
     return true;
   };
@@ -88,6 +90,12 @@ export function applyFetchedLevel(
     }
   }
 
+  const nextFailedLevels = { ...(ref.meta.failedLevels || {}) };
+  const nextLevelErrors = { ...(ref.meta.levelErrors || {}) };
+  for (const levelKey of stampedLevels) {
+    delete nextFailedLevels[levelKey];
+    delete nextLevelErrors[levelKey];
+  }
   const overrides: Partial<ItemMeta> = {
     error: latestItemFailureError(
       ref.meta,
@@ -99,6 +107,7 @@ export function applyFetchedLevel(
     levelFailureStamps: nextLevelFailureStamps,
     levelErrors: nextLevelErrors,
     isLoading: false, // Fetch completed successfully, clear loading state
+    failedLevels: nextFailedLevels,
   };
 
   const nextMeta = finalizeItemMeta(

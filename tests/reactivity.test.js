@@ -212,3 +212,54 @@ describe("onChange reactivity", () => {
     expect(listener.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe("onRefChange reactivity", () => {
+  it("only notifies listeners for the changed ref", async () => {
+    const DLCore = setup();
+    DLCore.createType("test", {
+      fetch: async (id) => ({ id }),
+    });
+
+    const first = DLCore.getItemRef("test", 1);
+    const second = DLCore.getItemRef("test", 2);
+    const firstListener = vi.fn();
+    const secondListener = vi.fn();
+    const globalListener = vi.fn();
+    DLCore.onRefChange(first, firstListener);
+    DLCore.onRefChange(second, secondListener);
+    DLCore.onChange(globalListener);
+
+    DLCore.fetchItem("test", 1);
+    await vi.waitFor(() => expect(first.data).not.toBeNull());
+
+    expect(firstListener).toHaveBeenCalled();
+    expect(secondListener).not.toHaveBeenCalled();
+    expect(globalListener).toHaveBeenCalled();
+  });
+
+  it("stops notifying after unsubscribe", () => {
+    const DLCore = setup();
+    DLCore.createType("test", { fetch: async (id) => ({ id }) });
+    const ref = DLCore.getItemRef("test", 1);
+    const listener = vi.fn();
+    const unsubscribe = DLCore.onRefChange(ref, listener);
+
+    unsubscribe();
+    DLCore.fetchItem("test", 1);
+
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("increments the ref revision before notifying listeners", () => {
+    const DLCore = setup();
+    DLCore.createType("test", { fetch: async (id) => ({ id }) });
+    const ref = DLCore.getItemRef("test", 1);
+    const revisions = [];
+    DLCore.onRefChange(ref, () => revisions.push(DLCore.getRefRevision(ref)));
+
+    DLCore.fetchItem("test", 1);
+
+    expect(revisions[0]).toBe(1);
+    expect(DLCore.getRefRevision(ref)).toBe(1);
+  });
+});

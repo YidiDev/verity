@@ -28,7 +28,7 @@ export function assignRef(
     changed = true;
   }
 
-  if (changed) notify();
+  if (changed) notify(ref);
 }
 
 // ---- Staleness check ------------------------------------------------------
@@ -84,6 +84,10 @@ export function ensureItemRef(typeName: string, id: unknown): ItemRef {
         levelStamps: Object.create(null) as Record<string, string | null>,
         levelFailureStamps: Object.create(null) as Record<string, string | null>,
         levelErrors: Object.create(null) as Record<string, string | null>,
+        failedLevels: Object.create(null) as Record<
+          string,
+          boolean | undefined
+        >,
         lastUsedAt: now,
         activeLevelQueryIds: Object.create(null) as Record<
           string,
@@ -287,6 +291,10 @@ export function finalizeItemFailureMeta(
     levelErrors: {
       ...(ref.meta.levelErrors || {}),
       [canonicalLevel]: message,
+    failedLevels: {
+      ...(ref.meta.failedLevels || {}),
+      [canonicalLevel]: true,
+    },
     },
   });
 }

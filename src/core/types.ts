@@ -127,6 +127,7 @@ export interface ItemMeta {
   lastFetchedAny: string | null;
   levelStamps: Record<string, string | null>;
   levelFailureStamps?: Record<string, string | null>;
+  failedLevels?: Record<string, boolean | undefined>;
   levelErrors?: Record<string, string | null>;
   lastUsedAt: string | null;
   activeLevelQueryIds: Record<string, string | undefined>;
@@ -294,6 +295,8 @@ export interface GlobalState {
   types: Map<string, TypeEntry>;
   collections: Map<string, CollectionEntry>;
   listeners: Array<() => void>;
+  refListeners: WeakMap<object, Set<() => void>>;
+  refRevisions: WeakMap<object, number>;
   directiveSource: DirectiveSource | null;
   sse: SseState;
   inFlightCol: Map<string, { promise: Promise<void> }>;

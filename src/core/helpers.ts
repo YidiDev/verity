@@ -34,6 +34,7 @@ export {
 
 export {
   paramsKey,
+  normalizeCollectionOptions,
   ensureCollectionRefEntry,
   itemKey,
 } from "./params.js";

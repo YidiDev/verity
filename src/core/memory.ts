@@ -124,6 +124,7 @@ function evictItemEntry(typeName: string, id: string, ref: ItemRef): void {
         lastFetchedAny: null,
         levelStamps: {},
         levelFailureStamps: {},
+        failedLevels: {},
         levelErrors: {},
         lastUsedAt: null,
         activeLevelQueryIds: Object.create(null) as Record<string, string | undefined>,

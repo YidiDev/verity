@@ -300,6 +300,13 @@ export function applyDirectives(
       const levelsToRefresh = new Set<string>();
       const stamps: Record<string, string | null> =
         ref.meta && ref.meta.levelStamps ? ref.meta.levelStamps : {};
+      const failedLevels = ref.meta?.failedLevels || {};
+
+      for (const [levelName, failed] of Object.entries(failedLevels)) {
+        if (failed && (levelName === LEVEL_DEFAULT || T.levels[levelName])) {
+          levelsToRefresh.add(levelName);
+        }
+      }
 
       for (const [levelName, stamp] of Object.entries(stamps)) {
         if (!stamp) continue;

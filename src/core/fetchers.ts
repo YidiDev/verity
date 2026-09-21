@@ -25,6 +25,7 @@ import {
   clearItemLevelError,
   hasErrorRetryElapsed,
   applyFetchedLevel,
+  normalizeCollectionOptions,
 } from "./helpers.js";
 import { queueBulkItemFetch } from "./bulk-fetch.js";
 import type {
@@ -152,6 +153,15 @@ export async function _startCollectionFetch(
       name,
       params: snapshot,
       reason: "failed",
+    });
+    return;
+  }
+
+  if (!force && !paramsKeyMismatch && ref.meta.error !== null) {
+    emitLifecycle("collection:fetch:skip", {
+      name,
+      params: snapshot,
+      reason: "previous-error",
     });
     return;
   }
@@ -294,6 +304,16 @@ export async function _startItemFetch(
     return G.inFlightItm.get(key)!.promise;
   }
 
+  if (!force && ref.meta.failedLevels?.[canonicalLevel]) {
+    emitLifecycle("item:fetch:skip", {
+      ...eventBase,
+      loud: !!loud,
+      force: false,
+      reason: "previous-error",
+    });
+    return;
+  }
+
   const isDefault = !levelName;
   const levelCfg = levelName ? T.levels[levelName] : undefined;
   const errorRetryMs = levelCfg ? levelCfg.errorRetryMs : T.errorRetryMs;
@@ -336,6 +356,11 @@ export async function _startItemFetch(
     canonicalLevel,
     qid,
   );
+  const nextFailedLevels = { ...(ref.meta.failedLevels || {}) };
+  delete nextFailedLevels[canonicalLevel];
+  const nextLevelErrors = { ...(ref.meta.levelErrors || {}) };
+  delete nextLevelErrors[canonicalLevel];
+  const remainingError = Object.values(nextLevelErrors).find(Boolean) ?? null;
 
   // Always set activeQueryId for query matching, but only set isLoading if loud
   if (loud) {
@@ -344,8 +369,11 @@ export async function _startItemFetch(
         ...ref.meta,
         isLoading: true,
         ...clearItemLevelError(ref.meta, canonicalLevel),
+        error: remainingError,
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
+        failedLevels: nextFailedLevels,
+        levelErrors: nextLevelErrors,
       },
     });
   } else {
@@ -353,8 +381,11 @@ export async function _startItemFetch(
       meta: {
         ...ref.meta,
         ...clearItemLevelError(ref.meta, canonicalLevel),
+        error: remainingError,
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
+        failedLevels: nextFailedLevels,
+        levelErrors: nextLevelErrors,
       },
     });
   }
@@ -420,7 +451,12 @@ export async function _startItemFetch(
           });
           return;
         }
-        const nextMeta = finalizeItemFailureMeta(ref, canonicalLevel, qid, e);
+        const nextMeta = finalizeItemFailureMeta(
+          ref,
+          canonicalLevel,
+          qid,
+          e,
+        );
         assignRef(ref, { meta: nextMeta });
         emitLifecycle("item:fetch:error", {
           ...eventBase,
@@ -449,35 +485,20 @@ export function fetchCollection(
   name: string,
   opts: FetchCollectionOptions = {},
 ): CollectionRef {
-  const C = G.collections.get(name);
-  if (!C) throw new Error(`Unknown collection '${name}'`);
+  const normalizedOpts = normalizeCollectionOptions(opts);
+  const ref = getCollectionRef(name, opts);
+  _startCollectionFetch(name, normalizedOpts);
+  return ref;
+}
 
-  // Support both { params: {...} } and direct params format.
-  // If opts.params is explicitly provided, use it.
-  // Otherwise, if opts has keys other than 'force' and 'params',
-  // treat opts as params directly.
-  let effectiveParams = opts.params;
-  let effectiveForce = opts.force;
-
-  if (effectiveParams === undefined) {
-    const optsKeys = Object.keys(opts);
-    const hasNonMetaKeys = optsKeys.some(
-      (k) => k !== "force" && k !== "params",
-    );
-    if (hasNonMetaKeys) {
-      const { force, params: _p, ...rest } = opts as Record<string, unknown>;
-      effectiveParams = rest;
-      effectiveForce = force as boolean | undefined;
-    }
-  }
-
-  const normalizedOpts = { params: effectiveParams, force: effectiveForce };
-
-  const { ref } = ensureCollectionRefEntry(name, effectiveParams);
+export function getCollectionRef(
+  name: string,
+  opts: FetchCollectionOptions = {},
+): CollectionRef {
+  const { params } = normalizeCollectionOptions(opts);
+  const { ref } = ensureCollectionRefEntry(name, params);
   ref.meta.lastUsedAt = nowISO();
   scheduleMemorySweep();
-  _startCollectionFetch(name, normalizedOpts);
-
   return ref;
 }
 
@@ -487,14 +508,19 @@ export function fetchItem(
   levelName: string | null = null,
   opts: FetchItemOptions = {},
 ): ItemRef {
-  const ref = ensureItemRef(typeName, id);
-  ref.meta.lastUsedAt = nowISO();
-  scheduleMemorySweep();
+  const ref = getItemRef(typeName, id);
 
   _startItemFetch(typeName, id, levelName, {
     loud: !opts.silent,
     force: !!opts.force,
   });
 
+  return ref;
+}
+
+export function getItemRef(typeName: string, id: unknown): ItemRef {
+  const ref = ensureItemRef(typeName, id);
+  ref.meta.lastUsedAt = nowISO();
+  scheduleMemorySweep();
   return ref;
 }

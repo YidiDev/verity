@@ -180,6 +180,29 @@ describe("fetchCollection", () => {
     }
   });
 
+  it("does not retry a failed collection without force", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ ids: [1], count: 1 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
+
+    const ref = DLCore.fetchCollection("widgets");
+    await tick();
+    DLCore.fetchCollection("widgets");
+    await tick();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(ref.meta.error).toContain("offline");
+
+    DLCore.fetchCollection("widgets", { force: true });
+    await tick();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(ref.meta.error).toBeNull();
+  });
+
   it("parameterized fetch: different params create different ref entries", async () => {
     const DLCore = freshCore();
     DLCore.configureMemory({ enabled: false });
@@ -455,6 +478,57 @@ describe("fetchItem", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("does not retry a failed item level without force", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("server error"))
+      .mockResolvedValueOnce({ id: "1", name: "Recovered" });
+    DLCore.createType("widget", { fetch: fetchFn });
+
+    const ref = DLCore.fetchItem("widget", "1");
+    await tick();
+    DLCore.fetchItem("widget", "1");
+    await tick();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(ref.meta.failedLevels.default).toBe(true);
+
+    DLCore.fetchItem("widget", "1", null, { force: true });
+    await tick();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(ref.data.name).toBe("Recovered");
+    expect(ref.meta.failedLevels.default).toBeUndefined();
+  });
+
+  it("does not let one failed level block another level", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const summaryFetch = vi.fn().mockRejectedValue(new Error("summary failed"));
+    const detailFetch = vi.fn().mockResolvedValue({ id: "1", body: "detail" });
+    DLCore.createType("widget", {
+      fetch: async (id) => ({ id }),
+      levels: {
+        summary: { fetch: summaryFetch, checkIfExists: (data) => !!data?.summary },
+        detail: { fetch: detailFetch, checkIfExists: (data) => !!data?.body },
+      },
+    });
+
+    const ref = DLCore.fetchItem("widget", "1", "summary");
+    await tick();
+    DLCore.fetchItem("widget", "1", "detail");
+    await tick();
+
+    expect(summaryFetch).toHaveBeenCalledTimes(1);
+    expect(detailFetch).toHaveBeenCalledTimes(1);
+    expect(ref.data.body).toBe("detail");
+    expect(ref.meta.failedLevels.summary).toBe(true);
+    expect(ref.meta.error).toContain("summary failed");
+    expect(ref.meta.levelErrors.summary).toContain("summary failed");
   });
 
   it("silent: true does not set isLoading", async () => {

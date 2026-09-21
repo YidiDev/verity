@@ -6,7 +6,7 @@ import { G } from "./state.js";
 import { nowISO, PARAM_DEFAULT_KEY, toLevelKey } from "./constants.js";
 import { assignRef } from "./ref-helpers.js";
 import { cloneParams } from "./clone-utils.js";
-import type { CollectionRef } from "./types.js";
+import type { CollectionRef, FetchCollectionOptions } from "./types.js";
 
 // ---- Params key -----------------------------------------------------------
 
@@ -51,6 +51,26 @@ export function paramsKey(params: unknown): string {
   } catch {
     return PARAM_DEFAULT_KEY;
   }
+}
+
+export function normalizeCollectionOptions(
+  opts: FetchCollectionOptions = {},
+): { params: unknown; force: boolean | undefined } {
+  let params = opts.params;
+  let force = opts.force;
+
+  if (params === undefined) {
+    const hasDirectParams = Object.keys(opts).some(
+      (key) => key !== "force" && key !== "params",
+    );
+    if (hasDirectParams) {
+      const { force: directForce, params: _params, ...rest } = opts;
+      params = rest;
+      force = directForce;
+    }
+  }
+
+  return { params, force };
 }
 
 // ---- Collection ref management --------------------------------------------

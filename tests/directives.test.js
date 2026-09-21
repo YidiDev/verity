@@ -222,6 +222,28 @@ describe("applyDirectives", () => {
 
       expect(fetchFn).toHaveBeenCalledTimes(2);
     });
+
+    it("retries a default level that has only failed", async () => {
+      const DLCore = freshCore();
+      DLCore.configureMemory({ enabled: false });
+      DLCore.configureSse({ enabled: false });
+      const fetchFn = vi.fn()
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce({ id: "1", name: "Recovered" });
+      DLCore.createType("widget", { fetch: fetchFn });
+
+      const ref = DLCore.fetchItem("widget", "1");
+      await tick();
+      expect(ref.data).toBeNull();
+
+      await DLCore.applyDirectives([
+        { op: "refresh_item", name: "widget", id: "1" },
+      ]);
+      await tick();
+
+      expect(fetchFn).toHaveBeenCalledTimes(2);
+      expect(ref.data.name).toBe("Recovered");
+    });
   });
 
   describe("invalidate", () => {
