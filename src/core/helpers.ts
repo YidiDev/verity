@@ -16,6 +16,9 @@ export {
   isLevelActive,
   finalizeItemMeta,
   finalizeItemFailureMeta,
+  clearItemLevelError,
+  latestItemFailureError,
+  hasErrorRetryElapsed,
   parseMetaTimestamp,
 } from "./ref-helpers.js";
 

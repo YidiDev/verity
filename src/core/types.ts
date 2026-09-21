@@ -127,6 +127,7 @@ export interface ItemMeta {
   lastFetchedAny: string | null;
   levelStamps: Record<string, string | null>;
   levelFailureStamps?: Record<string, string | null>;
+  levelErrors?: Record<string, string | null>;
   lastUsedAt: string | null;
   activeLevelQueryIds: Record<string, string | undefined>;
 }

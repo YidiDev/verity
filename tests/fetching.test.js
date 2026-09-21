@@ -168,7 +168,7 @@ describe("fetchCollection", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(fetchFn).toHaveBeenCalledTimes(2);
 
-      await vi.advanceTimersByTimeAsync(1_001);
+      await vi.advanceTimersByTimeAsync(1_000);
       DLCore.fetchCollection("widgets");
       await vi.advanceTimersByTimeAsync(0);
 
@@ -338,6 +338,7 @@ describe("fetchItem", () => {
     expect(ref.data).toEqual(expect.objectContaining({ name: "Recovered" }));
     expect(ref.meta.error).toBeNull();
     expect(ref.meta.levelFailureStamps.default).toBeUndefined();
+    expect(ref.meta.levelErrors.default).toBeUndefined();
   });
 
   it("tracks retry cooldowns independently for each item level", async () => {
@@ -367,6 +368,46 @@ describe("fetchItem", () => {
     expect(defaultFetch).toHaveBeenCalledTimes(1);
     expect(ref.data).toEqual(expect.objectContaining({ name: "Summary" }));
     expect(ref.meta.levelFailureStamps.detail).toEqual(expect.any(String));
+    expect(ref.meta.levelErrors.detail).toContain("detail failed");
+    expect(ref.meta.error).toContain("detail failed");
+  });
+
+  it("keeps another level's error visible when the latest failure recovers", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+
+    const detailFetch = vi.fn().mockRejectedValue(new Error("detail failed"));
+    const permissionsFetch = vi.fn()
+      .mockRejectedValueOnce(new Error("permissions failed"))
+      .mockResolvedValueOnce({ permissions: ["read"] });
+    DLCore.createType("widget", {
+      fetch: vi.fn(),
+      levels: {
+        detail: {
+          fetch: detailFetch,
+          checkIfExists: (data) => Boolean(data?.description),
+        },
+        permissions: {
+          fetch: permissionsFetch,
+          checkIfExists: (data) => Boolean(data?.permissions),
+        },
+      },
+    });
+
+    const ref = DLCore.fetchItem("widget", "1", "detail");
+    await tick();
+    DLCore.fetchItem("widget", "1", "permissions");
+    await tick();
+    expect(ref.meta.error).toContain("permissions failed");
+
+    DLCore.fetchItem("widget", "1", "permissions", { force: true });
+    await tick();
+
+    expect(ref.meta.levelFailureStamps.permissions).toBeUndefined();
+    expect(ref.meta.levelErrors.permissions).toBeUndefined();
+    expect(ref.meta.levelFailureStamps.detail).toEqual(expect.any(String));
+    expect(ref.meta.error).toContain("detail failed");
   });
 
   it("uses a level retry cooldown before type freshness when a refresh fails", async () => {
@@ -404,7 +445,7 @@ describe("fetchItem", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(detailFetch).toHaveBeenCalledTimes(2);
 
-      await vi.advanceTimersByTimeAsync(1_001);
+      await vi.advanceTimersByTimeAsync(1_000);
       DLCore.fetchItem("widget", "1", "detail");
       await vi.advanceTimersByTimeAsync(0);
 

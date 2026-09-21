@@ -22,6 +22,8 @@ import {
   setActiveLevelQueryId,
   isLevelActive,
   finalizeItemFailureMeta,
+  clearItemLevelError,
+  hasErrorRetryElapsed,
   applyFetchedLevel,
 } from "./helpers.js";
 import { queueBulkItemFetch } from "./bulk-fetch.js";
@@ -144,7 +146,7 @@ export async function _startCollectionFetch(
     !force &&
     !paramsKeyMismatch &&
     failedAt &&
-    !isStale(failedAt, errorRetryMs)
+    !hasErrorRetryElapsed(failedAt, errorRetryMs)
   ) {
     emitLifecycle("collection:fetch:skip", {
       name,
@@ -296,8 +298,7 @@ export async function _startItemFetch(
   const levelCfg = levelName ? T.levels[levelName] : undefined;
   const errorRetryMs = levelCfg ? levelCfg.errorRetryMs : T.errorRetryMs;
   const failedAt = ref.meta.levelFailureStamps?.[canonicalLevel];
-
-  if (!force && failedAt && !isStale(failedAt, errorRetryMs)) {
+  if (!force && failedAt && !hasErrorRetryElapsed(failedAt, errorRetryMs)) {
     emitLifecycle("item:fetch:skip", {
       ...eventBase,
       loud: !!loud,
@@ -342,7 +343,7 @@ export async function _startItemFetch(
       meta: {
         ...ref.meta,
         isLoading: true,
-        error: null,
+        ...clearItemLevelError(ref.meta, canonicalLevel),
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
       },
@@ -351,7 +352,7 @@ export async function _startItemFetch(
     assignRef(ref, {
       meta: {
         ...ref.meta,
-        error: null,
+        ...clearItemLevelError(ref.meta, canonicalLevel),
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
       },
@@ -490,7 +491,6 @@ export function fetchItem(
   ref.meta.lastUsedAt = nowISO();
   scheduleMemorySweep();
 
-  // _startItemFetch owns loading state to avoid active-query races.
   _startItemFetch(typeName, id, levelName, {
     loud: !opts.silent,
     force: !!opts.force,

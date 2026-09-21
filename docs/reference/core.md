@@ -257,7 +257,7 @@ DL.createType('current_user', {
 
 #### `errorRetryMs` (optional)
 
-Cooldown in milliseconds before a normal read may retry a failed fetch. The default is 30000 (30 seconds). This prevents reactive render paths from immediately re-arming a rejected request. Use `{ force: true }` for an explicit retry, such as from a Retry button.
+Cooldown in milliseconds before a normal read may retry a failed fetch. The value must be a positive, finite number; the default is 30000 (30 seconds). This prevents reactive render paths from immediately re-arming a rejected request. Use `{ force: true }` for an explicit retry, such as from a Retry button.
 
 #### `levels` (optional)
 
@@ -456,6 +456,7 @@ interface ItemReference {
     lastFetchedAny: string | null
     levelStamps: Record<string, string | null>
     levelFailureStamps: Record<string, string | null>
+    levelErrors: Record<string, string | null>
     error: string | null
     activeQueryId: string | null
     lastUsedAt: string | null
@@ -482,7 +483,8 @@ interface ItemReference {
     lastFetchedAny: string | null // ISO timestamp of last successful fetch
     levelStamps: Record<string, string | null>
     levelFailureStamps: Record<string, string | null>
-    error: string | null          // String form of the last error
+    levelErrors: Record<string, string | null>
+    error: string | null          // Most recent unresolved level error
     activeQueryId: string       // Unique query ID
     lastUsedAt: string          // ISO timestamp of last access
   }
@@ -519,7 +521,7 @@ const freshUserRef = DL.fetchItem('user', 123, null, { force: true })
 const bgUserRef = DL.fetchItem('user', 123, null, { silent: true })
 ```
 
-After a fetch fails, ordinary reads return the settled error state during the configured `errorRetryMs` cooldown. Call `fetchItem(..., { force: true })` from an event handler to retry immediately. Do not keep `force: true` inside a reactive getter or render function because it intentionally requests a fetch on every read.
+After a fetch fails, ordinary reads return the settled error state during the configured `errorRetryMs` cooldown. Item errors are retained per level, so a successful request for another level does not hide an unresolved failure. Call `fetchItem(..., { force: true })` from an event handler to retry immediately. Do not keep `force: true` inside a reactive getter or render function because it intentionally requests a fetch on every read.
 
 ### Reactivity
 
