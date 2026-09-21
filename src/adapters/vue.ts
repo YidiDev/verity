@@ -136,6 +136,8 @@ function createVueStore(Vue: VueAPI | null): VueStore | null {
     _tick: 0,
     _state: coreState(),
     col(name: string, opts = {}) {
+      // Reading the tick registers this getter with Vue's reactivity.
+      // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
       void this._tick;
       return fetchCollection(name, opts);
     },
@@ -145,6 +147,8 @@ function createVueStore(Vue: VueAPI | null): VueStore | null {
       level: string | null = null,
       opts = {},
     ) {
+      // Reading the tick registers this getter with Vue's reactivity.
+      // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
       void this._tick;
       return fetchItem(typeName, id, level, opts);
     },
@@ -152,6 +156,8 @@ function createVueStore(Vue: VueAPI | null): VueStore | null {
       return applyDirectives(directives);
     },
     state() {
+      // Reading the tick registers this getter with Vue's reactivity.
+      // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
       void this._tick;
       return this._state;
     },

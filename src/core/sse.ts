@@ -310,7 +310,7 @@ export function configureSse(cfg: SseConfig = {}): void {
   if (typeof cfg.url === "string" && cfg.url) {
     if (cfg.url !== G.sse.url) {
       try {
-        void new URL(cfg.url, window.location.origin);
+        new URL(cfg.url, window.location.origin);
         G.sse.url = cfg.url;
       } catch {
         // ignore invalid url, keep previous value

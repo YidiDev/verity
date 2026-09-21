@@ -91,6 +91,8 @@ export function ensureAlpineStore(
     Alpine.store(storeName, {
       _tick: 0,
       col(collectionName: string, opts = {}) {
+        // Reading the tick registers this getter with Alpine's reactivity.
+        // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
         void (this as AlpineStore)._tick;
         return fetchCollection(collectionName, opts);
       },
@@ -100,6 +102,8 @@ export function ensureAlpineStore(
         level: string | null = null,
         opts = {},
       ) {
+        // Reading the tick registers this getter with Alpine's reactivity.
+        // eslint-disable-next-line @typescript-eslint/no-meaningless-void-operator
         void (this as AlpineStore)._tick;
         return fetchItem(typeName, id, level, opts);
       },
