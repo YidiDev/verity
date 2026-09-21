@@ -66,6 +66,28 @@ describe("createType", () => {
     expect(T.stalenessMs).toBe(5000);
   });
 
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an unsafe type errorRetryMs value: %s",
+    (errorRetryMs) => {
+      const DLCore = freshCore();
+      expect(() =>
+        DLCore.createType("widget", { fetch: vi.fn(), errorRetryMs })
+      ).toThrow(/errorRetryMs must be a positive finite number/);
+    }
+  );
+
+  it("rejects an unsafe level errorRetryMs", () => {
+    const DLCore = freshCore();
+    expect(() =>
+      DLCore.createType("widget", {
+        fetch: vi.fn(),
+        levels: {
+          detail: { fetch: vi.fn(), errorRetryMs: Number.NaN },
+        },
+      })
+    ).toThrow(/errorRetryMs must be a positive finite number/);
+  });
+
   it("registers levels with their own fetch, check, stalenessMs, bulkFetch", () => {
     const DLCore = freshCore();
     DLCore.configureMemory({ enabled: false });
@@ -253,6 +275,16 @@ describe("createCollection", () => {
     const C = DLCore.state().collections.get("widgets");
     expect(C.stalenessMs).toBe(8000);
   });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an unsafe collection errorRetryMs value: %s",
+    (errorRetryMs) => {
+      const DLCore = freshCore();
+      expect(() =>
+        DLCore.createCollection("widgets", { fetch: vi.fn(), errorRetryMs })
+      ).toThrow(/errorRetryMs must be a positive finite number/);
+    }
+  );
 
   it("initial ref has correct shape", () => {
     const DLCore = freshCore();

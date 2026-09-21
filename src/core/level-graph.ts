@@ -3,7 +3,11 @@
 // ---------------------------------------------------------------------------
 
 import { LEVEL_DEFAULT, defaultCheck } from "./constants.js";
-import { assignRef, finalizeItemMeta } from "./ref-helpers.js";
+import {
+  assignRef,
+  finalizeItemMeta,
+  latestItemFailureError,
+} from "./ref-helpers.js";
 import type { TypeEntry, ItemRef, ItemMeta } from "./types.js";
 
 /**
@@ -30,6 +34,12 @@ export function applyFetchedLevel(
   const nextLevelStamps: Record<string, string | null> = {
     ...ref.meta.levelStamps,
   };
+  const nextLevelFailureStamps: Record<string, string | null> = {
+    ...(ref.meta.levelFailureStamps || {}),
+  };
+  const nextLevelErrors: Record<string, string | null> = {
+    ...(ref.meta.levelErrors || {}),
+  };
 
   const levelSatisfies = (levelKey: string): boolean => {
     const cfg =
@@ -54,12 +64,16 @@ export function applyFetchedLevel(
     if (!levelSatisfies(levelKey)) return false;
 
     nextLevelStamps[levelKey] = timestamp;
+    delete nextLevelFailureStamps[levelKey];
+    delete nextLevelErrors[levelKey];
     queue.push(levelKey);
     return true;
   };
 
   // Always stamp the source level
   nextLevelStamps[sourceLevelKey] = timestamp;
+  delete nextLevelFailureStamps[sourceLevelKey];
+  delete nextLevelErrors[sourceLevelKey];
   enqueueIfSatisfied(sourceLevelKey);
 
   // BFS through conversion edges
@@ -75,9 +89,15 @@ export function applyFetchedLevel(
   }
 
   const overrides: Partial<ItemMeta> = {
-    error: null,
+    error: latestItemFailureError(
+      ref.meta,
+      nextLevelErrors,
+      nextLevelFailureStamps,
+    ),
     lastFetchedAny: timestamp,
     levelStamps: nextLevelStamps,
+    levelFailureStamps: nextLevelFailureStamps,
+    levelErrors: nextLevelErrors,
     isLoading: false, // Fetch completed successfully, clear loading state
   };
 

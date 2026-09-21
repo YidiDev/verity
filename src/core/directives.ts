@@ -86,6 +86,7 @@ function applyCollectionDirectiveResult(
       isLoading: false,
       error: null,
       lastFetched: ts,
+      lastFailedAt: null,
       activeQueryId: null,
     },
   });

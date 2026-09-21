@@ -21,7 +21,9 @@ import {
   paramsKey,
   setActiveLevelQueryId,
   isLevelActive,
-  finalizeItemMeta,
+  finalizeItemFailureMeta,
+  clearItemLevelError,
+  hasErrorRetryElapsed,
   applyFetchedLevel,
 } from "./helpers.js";
 import { queueBulkItemFetch } from "./bulk-fetch.js";
@@ -108,7 +110,7 @@ export async function _startCollectionFetch(
 ): Promise<void> {
   const C = G.collections.get(name);
   if (!C) throw new Error(`Unknown collection '${name}'`);
-  const { fetch, stalenessMs } = C;
+  const { fetch, stalenessMs, errorRetryMs } = C;
 
   // Compute the params key directly to ensure correct in-flight tracking
   // for parameterized collections. This ensures parameterized collections
@@ -138,9 +140,28 @@ export async function _startCollectionFetch(
     ref.meta && ref.meta.paramsKey ? ref.meta.paramsKey : PARAM_DEFAULT_KEY;
   const paramsKeyMismatch = refParamsKey !== effectiveParamsKey;
   const neverFetchedForParams = !ref.meta.lastFetched;
+  const failedAt = ref.meta.lastFailedAt;
+
+  if (
+    !force &&
+    !paramsKeyMismatch &&
+    failedAt &&
+    !hasErrorRetryElapsed(failedAt, errorRetryMs)
+  ) {
+    emitLifecycle("collection:fetch:skip", {
+      name,
+      params: snapshot,
+      reason: "failed",
+    });
+    return;
+  }
 
   const shouldFetch =
-    force || paramsKeyMismatch || neverFetchedForParams || isStale(ref.meta.lastFetched, stalenessMs);
+    force ||
+    paramsKeyMismatch ||
+    neverFetchedForParams ||
+    !!failedAt ||
+    isStale(ref.meta.lastFetched, stalenessMs);
 
   if (!shouldFetch) {
     if (ref.meta.isLoading) {
@@ -197,6 +218,7 @@ export async function _startCollectionFetch(
           ...ref.meta,
           isLoading: false,
           lastFetched: nowISO(),
+          lastFailedAt: null,
           error: null,
           activeQueryId: null,
         },
@@ -221,6 +243,7 @@ export async function _startCollectionFetch(
           ...ref.meta,
           isLoading: false,
           error: String(e),
+          lastFailedAt: nowISO(),
           activeQueryId: null,
         },
       });
@@ -273,6 +296,17 @@ export async function _startItemFetch(
 
   const isDefault = !levelName;
   const levelCfg = levelName ? T.levels[levelName] : undefined;
+  const errorRetryMs = levelCfg ? levelCfg.errorRetryMs : T.errorRetryMs;
+  const failedAt = ref.meta.levelFailureStamps?.[canonicalLevel];
+  if (!force && failedAt && !hasErrorRetryElapsed(failedAt, errorRetryMs)) {
+    emitLifecycle("item:fetch:skip", {
+      ...eventBase,
+      loud: !!loud,
+      force: false,
+      reason: "failed",
+    });
+    return;
+  }
   const hasEnough = isDefault
     ? !!ref.data
     : !!(levelCfg && levelCfg.check(ref.data));
@@ -282,7 +316,7 @@ export async function _startItemFetch(
   const stalenessMs = levelCfg ? levelCfg.stalenessMs : T.stalenessMs;
   const stale = isStale(staleClock, stalenessMs);
 
-  const needs = force || !hasEnough || stale;
+  const needs = force || !!failedAt || !hasEnough || stale;
   if (!needs) {
     if (loud && ref.meta.isLoading) {
       assignRef(ref, { meta: { ...ref.meta, isLoading: false } });
@@ -309,7 +343,7 @@ export async function _startItemFetch(
       meta: {
         ...ref.meta,
         isLoading: true,
-        error: null,
+        ...clearItemLevelError(ref.meta, canonicalLevel),
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
       },
@@ -318,7 +352,7 @@ export async function _startItemFetch(
     assignRef(ref, {
       meta: {
         ...ref.meta,
-        error: null,
+        ...clearItemLevelError(ref.meta, canonicalLevel),
         activeQueryId: qid,
         activeLevelQueryIds: nextActiveLevels,
       },
@@ -386,9 +420,7 @@ export async function _startItemFetch(
           });
           return;
         }
-        const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
-          error: String(e),
-        });
+        const nextMeta = finalizeItemFailureMeta(ref, canonicalLevel, qid, e);
         assignRef(ref, { meta: nextMeta });
         emitLifecycle("item:fetch:error", {
           ...eventBase,
@@ -459,9 +491,6 @@ export function fetchItem(
   ref.meta.lastUsedAt = nowISO();
   scheduleMemorySweep();
 
-  // _startItemFetch handles setting isLoading correctly.
-  // DO NOT sync isLoading here - it creates a race condition where
-  // isLoading=true but activeQueryId=null.
   _startItemFetch(typeName, id, levelName, {
     loud: !opts.silent,
     force: !!opts.force,

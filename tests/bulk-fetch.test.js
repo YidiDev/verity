@@ -137,9 +137,15 @@ describe("bulk fetch queue", () => {
     DLCore.configureMemory({ enabled: false });
     DLCore.configureSse({ enabled: false });
 
+    const bulkFetch = vi.fn()
+      .mockRejectedValueOnce(new Error("bulk network failure"))
+      .mockResolvedValueOnce([
+        { id: "1", name: "Recovered Product 1" },
+        { id: "2", name: "Recovered Product 2" },
+      ]);
     DLCore.createType("product", {
       fetch: vi.fn(),
-      bulkFetch: vi.fn().mockRejectedValue(new Error("bulk network failure")),
+      bulkFetch,
     });
 
     const ref1 = DLCore.fetchItem("product", "1");
@@ -153,6 +159,23 @@ describe("bulk fetch queue", () => {
     expect(ref2.meta.error).toContain("bulk network failure");
     expect(ref1.data).toBeNull();
     expect(ref2.data).toBeNull();
+    expect(ref1.meta.levelFailureStamps.default).toEqual(expect.any(String));
+    expect(ref2.meta.levelFailureStamps.default).toEqual(expect.any(String));
+
+    DLCore.fetchItem("product", "1");
+    DLCore.fetchItem("product", "2");
+    await flushBulk();
+    expect(bulkFetch).toHaveBeenCalledTimes(1);
+
+    DLCore.fetchItem("product", "1", null, { force: true });
+    DLCore.fetchItem("product", "2", null, { force: true });
+    await flushBulk();
+
+    expect(bulkFetch).toHaveBeenCalledTimes(2);
+    expect(ref1.data).toEqual(expect.objectContaining({ name: "Recovered Product 1" }));
+    expect(ref2.data).toEqual(expect.objectContaining({ name: "Recovered Product 2" }));
+    expect(ref1.meta.levelFailureStamps.default).toBeUndefined();
+    expect(ref2.meta.levelFailureStamps.default).toBeUndefined();
   });
 
   it("coalesces: same item queued twice within delay window returns same ref", async () => {

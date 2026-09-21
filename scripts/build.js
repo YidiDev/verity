@@ -6,25 +6,64 @@
  */
 
 import { build } from "vite";
-import { resolve, dirname } from "path";
+import { resolve, dirname, basename } from "path";
 import { fileURLToPath } from "url";
-import { cpSync, mkdirSync } from "fs";
+import { cpSync, mkdirSync, writeFileSync } from "fs";
 import dts from "vite-plugin-dts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, "..");
 
+const coreCjsTypes = [
+  "InitOptions",
+  "CreateTypeOptions",
+  "CreateTypeLevelOptions",
+  "CreateCollectionOptions",
+  "FetchItemOptions",
+  "FetchCollectionOptions",
+  "SseConfig",
+  "MemoryConfig",
+  "Directive",
+  "DirectiveResult",
+  "ApplyDirectivesOptions",
+  "DirectiveEnvelope",
+  "DirectiveSourceInput",
+  "CustomDirectiveSourceInput",
+  "DirectiveSourceDescriptor",
+  "DirectiveSourceHelpers",
+  "CollectionRef",
+  "CollectionData",
+  "CollectionMeta",
+  "ItemRef",
+  "ItemMeta",
+  "LifecyclePayload",
+];
+
+const devtoolsCjsTypes = [
+  "DLAdapter",
+  "DLAdaptersMap",
+  "DevtoolsSnapshot",
+  "DevtoolsStore",
+  "DevtoolsLayout",
+  "DevtoolsElements",
+  "PanelDefinition",
+  "EventEntry",
+  "EventKind",
+  "EventKindMeta",
+  "LifecyclePayload",
+];
+
 const entries = [
-  { name: "core", entry: "src/core/index.ts", global: "DLCore" },
-  { name: "adapters/alpine", entry: "src/adapters/alpine.ts", global: "DLAdapters.Alpine" },
-  { name: "adapters/react", entry: "src/adapters/react.ts", global: "DLAdapters.React" },
-  { name: "adapters/vue", entry: "src/adapters/vue.ts", global: "DLAdapters.Vue" },
-  { name: "adapters/svelte", entry: "src/adapters/svelte.ts", global: "DLAdapters.Svelte" },
-  { name: "devtools/devtools", entry: "src/devtools/index.ts", global: "VerityDevtools" },
+  { name: "core", entry: "src/core/index.ts", types: "core/index", cjsTypes: coreCjsTypes, global: "DLCore" },
+  { name: "adapters/alpine", entry: "src/adapters/alpine.ts", types: "adapters/alpine", global: "DLAdapters.Alpine" },
+  { name: "adapters/react", entry: "src/adapters/react.ts", types: "adapters/react", global: "DLAdapters.React" },
+  { name: "adapters/vue", entry: "src/adapters/vue.ts", types: "adapters/vue", global: "DLAdapters.Vue" },
+  { name: "adapters/svelte", entry: "src/adapters/svelte.ts", types: "adapters/svelte", global: "DLAdapters.Svelte" },
+  { name: "devtools/devtools", entry: "src/devtools/index.ts", types: "devtools/index", cjsTypes: devtoolsCjsTypes, global: "VerityDevtools" },
 ];
 
 for (let i = 0; i < entries.length; i++) {
-  const { name, entry, global } = entries[i];
+  const { name, entry, types, cjsTypes = [], global } = entries[i];
   const isFirst = i === 0;
 
   console.log(`\nBuilding ${name}...`);
@@ -70,6 +109,31 @@ for (let i = 0; i < entries.length; i++) {
     },
     logLevel: "warn",
   });
+
+  cpSync(
+    resolve(root, `dist/${name}.umd.js`),
+    resolve(root, `dist/${name}.cjs`),
+  );
+  const declarationName = basename(types);
+  const namespace = cjsTypes.length
+    ? [
+        "",
+        "declare namespace api {",
+        ...cjsTypes.map((typeName) => `  type ${typeName} = esm.${typeName};`),
+        "}",
+      ]
+    : [];
+  writeFileSync(
+    resolve(root, `dist/${types}.d.cts`),
+    [
+      `import type * as esm from "./${declarationName}.js" with { "resolution-mode": "import" };`,
+      "",
+      "declare const api: typeof esm;",
+      ...namespace,
+      "export = api;",
+      "",
+    ].join("\n"),
+  );
 }
 
 // Copy devtools CSS

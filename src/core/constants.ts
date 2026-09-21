@@ -48,6 +48,9 @@ export const PARAM_DEFAULT_KEY = "__default__" as const;
 /** Default delay in milliseconds before flushing a bulk fetch queue. */
 export const DEFAULT_BULK_DELAY_MS = 50;
 
+/** Default cooldown before an automatic read retries a failed fetch. */
+export const DEFAULT_ERROR_RETRY_MS = 30_000;
+
 /** Default window (ms) for considering an item "recently used" during resync. */
 export const DEFAULT_RESYNC_ITEM_LAST_USED_WINDOW_MS = 2 * 60 * 1000; // 2 minutes
 

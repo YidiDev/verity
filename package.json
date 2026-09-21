@@ -3,39 +3,69 @@
   "version": "2.0.1",
   "description": "A framework agnostic data layer built to handle the communication layer between the server and the client seamlessly and keep the ui state always up to date with the source of truth",
   "type": "module",
-  "main": "./dist/core.umd.js",
+  "main": "./dist/core.cjs",
   "module": "./dist/core.mjs",
   "types": "./dist/core/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/core/index.d.ts",
-      "import": "./dist/core.mjs",
-      "require": "./dist/core.umd.js"
+      "import": {
+        "types": "./dist/core/index.d.ts",
+        "default": "./dist/core.mjs"
+      },
+      "require": {
+        "types": "./dist/core/index.d.cts",
+        "default": "./dist/core.cjs"
+      }
     },
     "./adapters/alpine": {
-      "types": "./dist/adapters/alpine.d.ts",
-      "import": "./dist/adapters/alpine.mjs",
-      "require": "./dist/adapters/alpine.umd.js"
+      "import": {
+        "types": "./dist/adapters/alpine.d.ts",
+        "default": "./dist/adapters/alpine.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/alpine.d.cts",
+        "default": "./dist/adapters/alpine.cjs"
+      }
     },
     "./adapters/react": {
-      "types": "./dist/adapters/react.d.ts",
-      "import": "./dist/adapters/react.mjs",
-      "require": "./dist/adapters/react.umd.js"
+      "import": {
+        "types": "./dist/adapters/react.d.ts",
+        "default": "./dist/adapters/react.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/react.d.cts",
+        "default": "./dist/adapters/react.cjs"
+      }
     },
     "./adapters/vue": {
-      "types": "./dist/adapters/vue.d.ts",
-      "import": "./dist/adapters/vue.mjs",
-      "require": "./dist/adapters/vue.umd.js"
+      "import": {
+        "types": "./dist/adapters/vue.d.ts",
+        "default": "./dist/adapters/vue.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/vue.d.cts",
+        "default": "./dist/adapters/vue.cjs"
+      }
     },
     "./adapters/svelte": {
-      "types": "./dist/adapters/svelte.d.ts",
-      "import": "./dist/adapters/svelte.mjs",
-      "require": "./dist/adapters/svelte.umd.js"
+      "import": {
+        "types": "./dist/adapters/svelte.d.ts",
+        "default": "./dist/adapters/svelte.mjs"
+      },
+      "require": {
+        "types": "./dist/adapters/svelte.d.cts",
+        "default": "./dist/adapters/svelte.cjs"
+      }
     },
     "./devtools": {
-      "types": "./dist/devtools/devtools.d.ts",
-      "import": "./dist/devtools/devtools.mjs",
-      "require": "./dist/devtools/devtools.umd.js"
+      "import": {
+        "types": "./dist/devtools/index.d.ts",
+        "default": "./dist/devtools/devtools.mjs"
+      },
+      "require": {
+        "types": "./dist/devtools/index.d.cts",
+        "default": "./dist/devtools/devtools.cjs"
+      }
     },
     "./devtools/style.css": "./dist/devtools/devtools.css"
   },
@@ -48,7 +78,9 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "test": "yarn build && vitest run",
+    "test:coverage": "yarn build && vitest run --coverage",
     "test:watch": "yarn build && vitest",
+    "verify:package": "node scripts/verify-package.js",
     "check": "yarn typecheck && yarn lint && yarn build && vitest run"
   },
   "keywords": [
@@ -78,6 +110,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@microsoft/api-extractor": "^7.58.7",
+    "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.4.1",
     "globals": "^17.6.0",
     "jsdom": "^29.1.1",
@@ -86,6 +119,6 @@
     "typescript-eslint": "^8.60.0",
     "vite": "^8.0.14",
     "vite-plugin-dts": "^5.0.1",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.11"
   }
 }

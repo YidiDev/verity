@@ -50,6 +50,16 @@ export function isStale(
   }
 }
 
+/** Returns true once a failed fetch is eligible for an automatic retry. */
+export function hasErrorRetryElapsed(
+  ts: string | null | undefined,
+  ms: number,
+): boolean {
+  if (!ts) return true;
+  const parsed = Date.parse(ts);
+  return !Number.isFinite(parsed) || Date.now() - parsed >= ms;
+}
+
 // ---- Item ref management --------------------------------------------------
 
 /**
@@ -72,6 +82,8 @@ export function ensureItemRef(typeName: string, id: unknown): ItemRef {
         activeQueryId: null,
         lastFetchedAny: null,
         levelStamps: Object.create(null) as Record<string, string | null>,
+        levelFailureStamps: Object.create(null) as Record<string, string | null>,
+        levelErrors: Object.create(null) as Record<string, string | null>,
         lastUsedAt: now,
         activeLevelQueryIds: Object.create(null) as Record<
           string,
@@ -222,6 +234,61 @@ export function finalizeItemMeta(
   }
 
   return next;
+}
+
+export function latestItemFailureError(
+  meta: ItemMeta,
+  levelErrors = meta.levelErrors || {},
+  levelFailureStamps = meta.levelFailureStamps || {},
+): string | null {
+  let latestError: string | null = null;
+  let latestTimestamp = -Infinity;
+
+  for (const [level, error] of Object.entries(levelErrors)) {
+    if (!error) continue;
+    const parsed = Date.parse(levelFailureStamps[level] || "");
+    const timestamp = Number.isFinite(parsed) ? parsed : 0;
+    if (timestamp >= latestTimestamp) {
+      latestTimestamp = timestamp;
+      latestError = error;
+    }
+  }
+
+  return latestError;
+}
+
+/** Clears one level's visible error while preserving unrelated failures. */
+export function clearItemLevelError(
+  meta: ItemMeta,
+  canonicalLevel: string,
+): Pick<ItemMeta, "error" | "levelErrors"> {
+  const levelErrors = { ...(meta.levelErrors || {}) };
+  delete levelErrors[canonicalLevel];
+  return {
+    error: latestItemFailureError(meta, levelErrors),
+    levelErrors,
+  };
+}
+
+/** Finalizes a failed item fetch and records a per-level retry cooldown. */
+export function finalizeItemFailureMeta(
+  ref: ItemRef,
+  canonicalLevel: string,
+  qid: string,
+  error: unknown,
+): ItemMeta {
+  const message = String(error);
+  return finalizeItemMeta(ref, canonicalLevel, qid, {
+    error: message,
+    levelFailureStamps: {
+      ...(ref.meta.levelFailureStamps || {}),
+      [canonicalLevel]: nowISO(),
+    },
+    levelErrors: {
+      ...(ref.meta.levelErrors || {}),
+      [canonicalLevel]: message,
+    },
+  });
 }
 
 // ---- Parse timestamp helper -----------------------------------------------
