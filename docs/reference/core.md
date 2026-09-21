@@ -521,7 +521,9 @@ const freshUserRef = DL.fetchItem('user', 123, null, { force: true })
 const bgUserRef = DL.fetchItem('user', 123, null, { silent: true })
 ```
 
-After a fetch fails, ordinary reads return the settled error state during the configured `errorRetryMs` cooldown. Item errors are retained per level, so a successful request for another level does not hide an unresolved failure. Call `fetchItem(..., { force: true })` from an event handler to retry immediately. Do not keep `force: true` inside a reactive getter or render function because it intentionally requests a fetch on every read.
+A failed fetch is a settled result. Ordinary reads return the same ref and do
+not retry the failed level. Use `{ force: true }` for an explicit retry;
+server-authored refresh directives also force the requested fetch.
 
 ### Reactivity
 
@@ -796,6 +798,25 @@ unsubscribe()
 ```
 
 **Note:** This is a low-level API. Framework adapters handle reactivity automatically.
+
+---
+
+## `onRefChange(ref, callback)`
+
+Subscribe to changes for one item or collection ref. Unlike `onChange()`, the
+callback does not run when an unrelated ref changes. This is primarily used by
+framework adapters.
+
+```typescript
+function onRefChange(
+  ref: ItemRef | CollectionRef,
+  callback: () => void
+): () => void
+```
+
+Use `getItemRef()` or `getCollectionRef()` when a ref must be obtained without
+starting a fetch. The normal `fetchItem()` and `fetchCollection()` APIs still
+return the same stable refs while also evaluating whether a request is needed.
 
 ---
 

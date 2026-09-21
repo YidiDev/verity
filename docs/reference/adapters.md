@@ -854,6 +854,30 @@ function DataView() {
 
 ---
 
+### Pattern: Reactive Reads and Explicit Retry
+
+Item and collection reads are safe inside Alpine getters, Vue computed values,
+and framework render functions. Each adapter subscribes to the specific ref it
+returns, so an update to one entity does not invalidate readers of another.
+The global `state()` surface remains globally reactive by design.
+
+When a fetch fails, the ref settles with `meta.isLoading === false` and the
+error in `meta.error`. Re-reading the ref does not start another request. Retry
+explicitly after a user action:
+
+```javascript
+// Alpine
+$store.lib.it('user', userId, null, { force: true })
+
+// Vue
+dl.it('user', userId, null, { force: true })
+```
+
+Server-authored refresh directives also bypass the settled error and retry the
+request. This prevents render loops while keeping retry decisions intentional.
+
+---
+
 ## Summary
 
 **Adapters Available:**
