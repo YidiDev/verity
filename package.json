@@ -80,6 +80,7 @@
     "test": "yarn build && vitest run",
     "test:coverage": "yarn build && vitest run --coverage",
     "test:watch": "yarn build && vitest",
+    "verify:package": "node scripts/verify-package.js",
     "check": "yarn typecheck && yarn lint && yarn build && vitest run"
   },
   "keywords": [
