@@ -185,14 +185,12 @@ interface TypeConfig {
   fetch: (id: string | number) => Promise<any>  // Fetch single item by ID
   bulkFetch?: (ids: (string | number)[], level?: string) => Promise<any[]>  // Optional bulk fetch
   stalenessMs?: number                            // Per-type staleness (default: 15000)
-  errorRetryMs?: number                           // Failed-fetch cooldown (default: 30000)
   levelConversionMap?: { [level: string]: string[] }  // Level conversion rules
   levels?: {
     [levelName: string]: {
       fetch: (id: string | number) => Promise<any>
       checkIfExists?: (data: any) => boolean
       stalenessMs?: number
-      errorRetryMs?: number
       bulkFetch?: (ids: (string | number)[], level?: string) => Promise<any[]>
       levelConversionMap?: { [level: string]: string[] }
     }
@@ -254,10 +252,6 @@ DL.createType('current_user', {
   stalenessMs: 300000
 })
 ```
-
-#### `errorRetryMs` (optional)
-
-Cooldown in milliseconds before a normal read may retry a failed fetch. The value must be a positive, finite number; the default is 30000 (30 seconds). This prevents reactive render paths from immediately re-arming a rejected request. Use `{ force: true }` for an explicit retry, such as from a Retry button.
 
 #### `levels` (optional)
 
@@ -353,7 +347,6 @@ function createCollection(name: string, config: CollectionConfig): void
 interface CollectionConfig {
   fetch: (params?: any) => Promise<{ ids: any[], count?: number }>  // Fetch function
   stalenessMs?: number  // Per-collection staleness (default: 15000)
-  errorRetryMs?: number // Failed-fetch cooldown (default: 30000)
 }
 ```
 
@@ -405,10 +398,6 @@ DL.createCollection('archived_orders', {
 })
 ```
 
-#### `errorRetryMs` (optional)
-
-Cooldown in milliseconds before a normal read may retry a failed collection fetch. The default is 30000 (30 seconds). Parameterized collection refs track failures independently.
-
 ### Example
 
 ```javascript
@@ -455,7 +444,7 @@ interface ItemReference {
     isLoading: boolean
     lastFetchedAny: string | null
     levelStamps: Record<string, string | null>
-    levelFailureStamps: Record<string, string | null>
+    failedLevels: Record<string, boolean | undefined>
     levelErrors: Record<string, string | null>
     error: string | null
     activeQueryId: string | null
@@ -482,7 +471,7 @@ interface ItemReference {
     isLoading: boolean          // true while fetching
     lastFetchedAny: string | null // ISO timestamp of last successful fetch
     levelStamps: Record<string, string | null>
-    levelFailureStamps: Record<string, string | null>
+    failedLevels: Record<string, boolean | undefined>
     levelErrors: Record<string, string | null>
     error: string | null          // Most recent unresolved level error
     activeQueryId: string       // Unique query ID
@@ -568,7 +557,6 @@ interface CollectionReference {
   meta: {
     isLoading: boolean
     lastFetched: string | null  // ISO timestamp
-    lastFailedAt: string | null // ISO timestamp of the last failed fetch
     error: string | null
     activeQueryId: string | null
     paramsSnapshot: any         // Params used for this fetch
@@ -596,7 +584,6 @@ interface CollectionReference {
   meta: {
     isLoading: boolean          // true while fetching
     lastFetched: string | null  // ISO timestamp of last fetch
-    lastFailedAt: string | null // ISO timestamp of last failed fetch
     error: string | null        // String form of the last error
     activeQueryId: string       // Unique query ID
     paramsSnapshot: any         // Params used for this fetch

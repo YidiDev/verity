@@ -159,8 +159,8 @@ describe("bulk fetch queue", () => {
     expect(ref2.meta.error).toContain("bulk network failure");
     expect(ref1.data).toBeNull();
     expect(ref2.data).toBeNull();
-    expect(ref1.meta.levelFailureStamps.default).toEqual(expect.any(String));
-    expect(ref2.meta.levelFailureStamps.default).toEqual(expect.any(String));
+    expect(ref1.meta.failedLevels.default).toBe(true);
+    expect(ref2.meta.failedLevels.default).toBe(true);
 
     DLCore.fetchItem("product", "1");
     DLCore.fetchItem("product", "2");
@@ -174,8 +174,63 @@ describe("bulk fetch queue", () => {
     expect(bulkFetch).toHaveBeenCalledTimes(2);
     expect(ref1.data).toEqual(expect.objectContaining({ name: "Recovered Product 1" }));
     expect(ref2.data).toEqual(expect.objectContaining({ name: "Recovered Product 2" }));
-    expect(ref1.meta.levelFailureStamps.default).toBeUndefined();
-    expect(ref2.meta.levelFailureStamps.default).toBeUndefined();
+    expect(ref1.meta.failedLevels.default).toBeUndefined();
+    expect(ref2.meta.failedLevels.default).toBeUndefined();
+  });
+
+  it("queues a forced retry requested during a bulk error notification", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const bulkFetch = vi.fn()
+      .mockRejectedValueOnce(new Error("bulk offline"))
+      .mockResolvedValueOnce([{ id: "1", name: "Recovered" }]);
+    DLCore.createType("product", {
+      fetch: vi.fn(),
+      bulkFetch,
+    });
+
+    const ref = DLCore.getItemRef("product", "1");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.error) {
+        retried = true;
+        DLCore.fetchItem("product", "1", null, { force: true });
+      }
+    });
+    DLCore.fetchItem("product", "1");
+    await flushBulk();
+    await flushBulk();
+
+    expect(bulkFetch).toHaveBeenCalledTimes(2);
+    expect(ref.data).toEqual(expect.objectContaining({ name: "Recovered" }));
+    unsubscribe();
+  });
+
+  it("queues a forced retry requested during a bulk loading notification", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const bulkFetch = vi.fn()
+      .mockResolvedValueOnce([{ id: "1", attempt: 1 }])
+      .mockResolvedValueOnce([{ id: "1", attempt: 2 }]);
+    DLCore.createType("product", { fetch: vi.fn(), bulkFetch });
+
+    const ref = DLCore.getItemRef("product", "1");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.isLoading) {
+        retried = true;
+        DLCore.fetchItem("product", "1", null, { force: true });
+      }
+    });
+    DLCore.fetchItem("product", "1");
+    await flushBulk();
+    await flushBulk();
+
+    expect(bulkFetch).toHaveBeenCalledTimes(2);
+    expect(ref.data).toEqual(expect.objectContaining({ attempt: 2 }));
+    unsubscribe();
   });
 
   it("coalesces: same item queued twice within delay window returns same ref", async () => {

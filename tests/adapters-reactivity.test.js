@@ -199,10 +199,87 @@ describe.each(["alpine", "vue"])("%s ref-scoped reactivity", (adapterName) => {
     expect(forcedRenders).toBeLessThan(10);
     expect(normalRenders).toBeLessThan(10);
   });
+
+  it("releases the force latch after a retry queued from an error effect", async () => {
+    const { adapter, store, runEffect } = await setupAdapter(adapterName);
+    const fetch = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ id: "x", attempt: 2 })
+      .mockResolvedValueOnce({ id: "x", attempt: 3 });
+    adapter.createType("thing", { fetch });
+
+    const bridge = store.it("thing", "x");
+    let requestedRetry = false;
+    runEffect(() => {
+      if (bridge.meta.error && !requestedRetry) {
+        requestedRetry = true;
+        store.it("thing", "x", null, { force: true });
+      }
+    });
+    await settle();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bridge.data.attempt).toBe(2);
+
+    store.it("thing", "x", null, { force: true });
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(bridge.data.attempt).toBe(3);
+  });
+
+  it("upgrades a pending normal read to a forced read", async () => {
+    const { adapter, store } = await setupAdapter(adapterName);
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ id: "x", attempt: 1 })
+      .mockResolvedValueOnce({ id: "x", attempt: 2 })
+      .mockResolvedValueOnce({ id: "x", attempt: 3 });
+    adapter.createType("thing", { fetch, stalenessMs: 60_000 });
+
+    const bridge = store.it("thing", "x");
+    await settle();
+    store.it("thing", "x");
+    store.it("thing", "x", null, { force: true });
+    await settle();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(bridge.data.attempt).toBe(2);
+
+    store.it("thing", "x", null, { force: true });
+    await settle();
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps a retained bridge live after its backing ref is evicted", async () => {
+    vi.useFakeTimers();
+    try {
+      const { adapter, store } = await setupAdapter(adapterName);
+      const fetch = vi.fn(async (id) => ({ id }));
+      adapter.createType("thing", { fetch });
+      const bridge = store.it("thing", "x");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(bridge.data).toEqual({ id: "x" });
+
+      bridge.meta.lastUsedAt = new Date(0).toISOString();
+      adapter.configureMemory({
+        enabled: true,
+        pruneIntervalMs: 1_000,
+        itemEntryTtlMs: 1,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(bridge.data).toEqual({ id: "x" });
+      expect(fetch).toHaveBeenCalledTimes(2);
+      adapter.configureMemory({ enabled: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("svelte ref-scoped reactivity", () => {
-  it("rebinds an active item store after cache eviction", async () => {
+  it("pins an active item store across repeated memory sweeps", async () => {
     vi.useFakeTimers();
     vi.resetModules();
     try {
@@ -225,15 +302,149 @@ describe("svelte ref-scoped reactivity", () => {
         pruneIntervalMs: 1_000,
         itemEntryTtlMs: 1,
       });
-      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(5_000);
 
-      expect(current).not.toBe(evictedRef);
+      expect(current).toBe(evictedRef);
       expect(current.data).toEqual({ id: "x" });
-      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(fetch).toHaveBeenCalledTimes(1);
       unsubscribe();
       adapter.configureMemory({ enabled: false });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("pins an active parameterized collection across memory sweeps", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    try {
+      const adapter = await import("../src/adapters/svelte.ts");
+      adapter.configureMemory({ enabled: false });
+      adapter.configureSse({ enabled: false });
+      const fetch = vi.fn(async () => ({ ids: ["x"], count: 1 }));
+      adapter.createCollection("things", { fetch });
+
+      let current;
+      const unsubscribe = adapter.collectionStore("things", {
+        params: { page: 1 },
+      }).subscribe((ref) => {
+        current = ref;
+      });
+      await vi.runAllTimersAsync();
+      const retainedRef = current;
+      retainedRef.meta.lastUsedAt = new Date(0).toISOString();
+
+      adapter.configureMemory({
+        enabled: true,
+        pruneIntervalMs: 1_000,
+        collectionEntryTtlMs: 1,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(current).toBe(retainedRef);
+      expect(current.data.ids).toEqual(["x"]);
+      expect(fetch).toHaveBeenCalledTimes(1);
+      unsubscribe();
+      adapter.configureMemory({ enabled: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("react render safety", () => {
+  it("does not create item or parameterized collection refs during render", async () => {
+    vi.resetModules();
+    const effects = [];
+    globalThis.React = {
+      useRef: (initial) => ({ current: initial }),
+      useEffect: (effect) => effects.push(effect),
+      useMemo: (factory) => factory(),
+      useCallback: (callback) => callback,
+      useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+    };
+
+    try {
+      const adapter = await import("../src/adapters/react.ts");
+      adapter.configureMemory({ enabled: false });
+      adapter.configureSse({ enabled: false });
+      const itemFetch = vi.fn(async (id) => ({ id }));
+      const collectionFetch = vi.fn(async () => ({ ids: ["x"], count: 1 }));
+      adapter.createType("thing", { fetch: itemFetch });
+      adapter.createCollection("things", {
+        fetch: collectionFetch,
+      });
+
+      const item = adapter.useItem("thing", "x", null, { force: true });
+      const collection = adapter.useCollection("things", {
+        params: { page: 1 },
+        force: true,
+      });
+      expect(item.data).toBeNull();
+      expect(collection.data.ids).toEqual([]);
+      expect(adapter.state().types.get("thing").items.size).toBe(0);
+      expect(adapter.state().collections.get("things").refs.size).toBe(1);
+
+      for (const effect of effects) effect();
+      for (const effect of effects) effect();
+      await settle();
+      expect(adapter.state().types.get("thing").items.size).toBe(1);
+      expect(adapter.state().collections.get("things").refs.size).toBe(2);
+      expect(itemFetch).toHaveBeenCalledTimes(1);
+      expect(collectionFetch).toHaveBeenCalledTimes(1);
+    } finally {
+      delete globalThis.React;
+    }
+  });
+
+  it("pins an item ref created by a mounted hook", async () => {
+    vi.useFakeTimers();
+    vi.resetModules();
+    const effects = [];
+    globalThis.React = {
+      useRef: (initial) => ({ current: initial }),
+      useEffect: (effect) => effects.push(effect),
+      useMemo: (factory) => factory(),
+      useCallback: (callback) => callback,
+      useSyncExternalStore: (_subscribe, getSnapshot) => getSnapshot(),
+    };
+
+    try {
+      const adapter = await import("../src/adapters/react.ts");
+      adapter.configureMemory({ enabled: false });
+      adapter.configureSse({ enabled: false });
+      const fetch = vi.fn(async (id) => ({ id }));
+      adapter.createType("thing", { fetch });
+      adapter.useItem("thing", "x");
+      const cleanups = effects.map((effect) => effect());
+      await vi.advanceTimersByTimeAsync(0);
+
+      const ref = adapter.state().types.get("thing").items.get("x");
+      ref.meta.lastUsedAt = new Date(0).toISOString();
+      adapter.configureMemory({
+        enabled: true,
+        pruneIntervalMs: 1_000,
+        itemEntryTtlMs: 1,
+      });
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(adapter.state().types.get("thing").items.get("x")).toBe(ref);
+      expect(ref.data).toEqual({ id: "x" });
+      for (const cleanup of cleanups) cleanup?.();
+      adapter.configureMemory({ enabled: false });
+    } finally {
+      vi.useRealTimers();
+      delete globalThis.React;
+    }
+  });
+});
+
+describe("alpine state access", () => {
+  it("supports detached state calls", async () => {
+    vi.resetModules();
+    const { store } = await setupAdapter("alpine");
+    const readState = store.state;
+    expect(readState().types).toBeInstanceOf(Map);
+    delete window.Alpine;
   });
 });

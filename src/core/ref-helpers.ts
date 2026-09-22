@@ -4,7 +4,8 @@
 
 import { G } from "./state.js";
 import { notify } from "./reactivity.js";
-import { nowISO } from "./constants.js";
+import { fromLevelKey, nowISO } from "./constants.js";
+import { itemKey } from "./params.js";
 import type { ItemRef, ItemMeta } from "./types.js";
 
 // ---- Ref assignment -------------------------------------------------------
@@ -50,16 +51,6 @@ export function isStale(
   }
 }
 
-/** Returns true once a failed fetch is eligible for an automatic retry. */
-export function hasErrorRetryElapsed(
-  ts: string | null | undefined,
-  ms: number,
-): boolean {
-  if (!ts) return true;
-  const parsed = Date.parse(ts);
-  return !Number.isFinite(parsed) || Date.now() - parsed >= ms;
-}
-
 // ---- Item ref management --------------------------------------------------
 
 /**
@@ -82,7 +73,6 @@ export function ensureItemRef(typeName: string, id: unknown): ItemRef {
         activeQueryId: null,
         lastFetchedAny: null,
         levelStamps: Object.create(null) as Record<string, string | null>,
-        levelFailureStamps: Object.create(null) as Record<string, string | null>,
         levelErrors: Object.create(null) as Record<string, string | null>,
         failedLevels: Object.create(null) as Record<
           string,
@@ -240,63 +230,43 @@ export function finalizeItemMeta(
   return next;
 }
 
-export function latestItemFailureError(
-  meta: ItemMeta,
-  levelErrors = meta.levelErrors || {},
-  levelFailureStamps = meta.levelFailureStamps || {},
+export function latestItemError(
+  levelErrors: Record<string, string | null> = {},
 ): string | null {
-  let latestError: string | null = null;
-  let latestTimestamp = -Infinity;
-
-  for (const [level, error] of Object.entries(levelErrors)) {
-    if (!error) continue;
-    const parsed = Date.parse(levelFailureStamps[level] || "");
-    const timestamp = Number.isFinite(parsed) ? parsed : 0;
-    if (timestamp >= latestTimestamp) {
-      latestTimestamp = timestamp;
-      latestError = error;
-    }
+  let latest: string | null = null;
+  for (const error of Object.values(levelErrors)) {
+    if (error) latest = error;
   }
-
-  return latestError;
+  return latest;
 }
 
-/** Clears one level's visible error while preserving unrelated failures. */
-export function clearItemLevelError(
-  meta: ItemMeta,
-  canonicalLevel: string,
-): Pick<ItemMeta, "error" | "levelErrors"> {
-  const levelErrors = { ...(meta.levelErrors || {}) };
-  delete levelErrors[canonicalLevel];
-  return {
-    error: latestItemFailureError(meta, levelErrors),
-    levelErrors,
-  };
-}
-
-/** Finalizes a failed item fetch and records a per-level retry cooldown. */
+/** Finalizes a failed item fetch for explicit-retry semantics. */
 export function finalizeItemFailureMeta(
   ref: ItemRef,
+  typeName: string,
+  id: unknown,
   canonicalLevel: string,
   qid: string,
   error: unknown,
 ): ItemMeta {
   const message = String(error);
-  return finalizeItemMeta(ref, canonicalLevel, qid, {
+  const levelErrors = { ...(ref.meta.levelErrors || {}) };
+  delete levelErrors[canonicalLevel];
+  levelErrors[canonicalLevel] = message;
+  const nextMeta = finalizeItemMeta(ref, canonicalLevel, qid, {
     error: message,
-    levelFailureStamps: {
-      ...(ref.meta.levelFailureStamps || {}),
-      [canonicalLevel]: nowISO(),
-    },
-    levelErrors: {
-      ...(ref.meta.levelErrors || {}),
-      [canonicalLevel]: message,
+    levelErrors,
     failedLevels: {
       ...(ref.meta.failedLevels || {}),
       [canonicalLevel]: true,
     },
-    },
   });
+  nextMeta.isLoading = Object.keys(nextMeta.activeLevelQueryIds).some(
+    (levelKey) => G.inFlightItm.get(
+      itemKey(typeName, id, fromLevelKey(levelKey)),
+    )?.loud === true,
+  );
+  return nextMeta;
 }
 
 // ---- Parse timestamp helper -----------------------------------------------

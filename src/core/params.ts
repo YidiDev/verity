@@ -124,7 +124,6 @@ export function ensureCollectionRefEntry(
       meta: {
         isLoading: false,
         lastFetched: null,
-        lastFailedAt: null,
         error: null,
         activeQueryId: null,
         paramsSnapshot: snapshot !== undefined ? snapshot : params,

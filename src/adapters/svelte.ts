@@ -32,6 +32,7 @@ import {
   type CollectionRef,
   type ItemRef,
 } from "../core/index.js";
+import { releaseRef, retainRef } from "../core/reactivity.js";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -160,7 +161,9 @@ export function collectionStore(
       const nextRef = getCollectionRef(name, opts);
       if (nextRef === ref) return;
       unsubscribe();
+      if (ref) releaseRef(ref);
       ref = nextRef;
+      retainRef(nextRef);
       set(ref);
       unsubscribe = coreOnRefChange(nextRef, () => {
         set(nextRef);
@@ -179,6 +182,7 @@ export function collectionStore(
     return () => {
       active = false;
       unsubscribe();
+      if (ref) releaseRef(ref);
     };
   });
 }
@@ -204,7 +208,9 @@ export function itemStore(
       const nextRef = getItemRef(typeName, id);
       if (nextRef === ref) return;
       unsubscribe();
+      if (ref) releaseRef(ref);
       ref = nextRef;
+      retainRef(nextRef);
       set(ref);
       unsubscribe = coreOnRefChange(nextRef, () => {
         set(nextRef);
@@ -223,6 +229,7 @@ export function itemStore(
     return () => {
       active = false;
       unsubscribe();
+      if (ref) releaseRef(ref);
     };
   });
 }

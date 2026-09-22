@@ -9,8 +9,6 @@ import {
   getRefRevision,
   fetchCollection,
   fetchItem,
-  getCollectionRef,
-  getItemRef,
   state as coreState,
   createType,
   createCollection,
@@ -35,6 +33,12 @@ import {
   type FetchCollectionOptions,
   type FetchItemOptions,
 } from "../core/index.js";
+import {
+  findCollectionRef,
+  findItemRef,
+} from "../core/public-fetch.js";
+import { normalizeCollectionOptions as normalizeCoreCollectionOptions } from "../core/params.js";
+import { releaseRef, retainRef } from "../core/reactivity.js";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -95,15 +99,7 @@ function paramsKey(params: unknown): string {
 function normalizeCollectionOptions(
   options: FetchCollectionOptions,
 ): FetchCollectionOptions {
-  if (!options || typeof options !== "object") return {};
-  const normalized: FetchCollectionOptions = {};
-  if (Object.prototype.hasOwnProperty.call(options, "params")) {
-    normalized.params = options.params;
-  }
-  if (Object.prototype.hasOwnProperty.call(options, "force")) {
-    normalized.force = !!options.force;
-  }
-  return normalized;
+  return normalizeCoreCollectionOptions(options);
 }
 
 function normalizeItemOptions(
@@ -126,8 +122,7 @@ function buildCollectionSignature(
   name: string,
   options: FetchCollectionOptions,
 ): string {
-  const opts =
-    options && typeof options === "object" ? options : {};
+  const opts = normalizeCollectionOptions(options);
   const params = paramsKey(opts.params);
   const force = opts.force ? "1" : "0";
   return `${String(name)}|${params}|force:${force}`;
@@ -183,7 +178,45 @@ function subscribeRef(
   ref: CollectionRef | ItemRef,
   listener: () => void,
 ): () => void {
-  return coreOnRefChange(ref, listener);
+  retainRef(ref);
+  const unsubscribe = coreOnRefChange(ref, listener);
+  return () => {
+    unsubscribe();
+    releaseRef(ref);
+  };
+}
+
+function emptyCollectionRef(options: FetchCollectionOptions): CollectionRef {
+  const params = options.params ?? {};
+  return {
+    data: { ids: [], count: 0, meta: null, items: null },
+    meta: {
+      isLoading: false,
+      lastFetched: null,
+      error: null,
+      activeQueryId: null,
+      paramsSnapshot: params,
+      paramsKey: paramsKey(params),
+      lastUsedAt: null,
+    },
+  };
+}
+
+function emptyItemRef(): ItemRef {
+  return {
+    data: null,
+    meta: {
+      isLoading: false,
+      error: null,
+      activeQueryId: null,
+      lastFetchedAny: null,
+      levelStamps: {},
+      failedLevels: {},
+      levelErrors: {},
+      lastUsedAt: null,
+      activeLevelQueryIds: {},
+    },
+  };
 }
 
 // ---- Init wrapper ---------------------------------------------------------
@@ -199,29 +232,46 @@ export function useCollection(
   options: FetchCollectionOptions = {},
 ): CollectionRef {
   const React = ensureReact();
-  const { useEffect, useMemo, useSyncExternalStore } = React;
+  const { useEffect, useMemo, useRef, useSyncExternalStore } = React;
 
   const signature = buildCollectionSignature(name, options);
   const normalizedOptions = useMemo(
     () => normalizeCollectionOptions(options),
     [signature],
   );
-  const ref = getCollectionRef(name, normalizedOptions);
+  const ref = findCollectionRef(name, normalizedOptions);
+  const emptyRef = useRef<CollectionRef | null>(null);
+  const fetchedSignature = useRef<string | null>(null);
+  if (!emptyRef.current) emptyRef.current = emptyCollectionRef(normalizedOptions);
 
   useEffect(() => {
-    fetchCollection(name, normalizedOptions);
+    const effectOptions = fetchedSignature.current === signature
+      ? { ...normalizedOptions, force: false }
+      : normalizedOptions;
+    fetchedSignature.current = signature;
+    const fetchedRef = fetchCollection(name, effectOptions);
+    retainRef(fetchedRef);
+    return () => releaseRef(fetchedRef);
   }, [signature, name, normalizedOptions]);
 
   const subscribeToRef = useMemo(
-    () => (listener: () => void) => subscribeRef(ref, listener),
-    [ref],
+    () => (listener: () => void) => {
+      const current = findCollectionRef(name, normalizedOptions);
+      return current
+        ? subscribeRef(current, listener)
+        : coreOnChange(listener);
+    },
+    [signature, name, normalizedOptions],
   );
   const getVersion = useMemo(
-    () => () => getRefRevision(ref),
-    [ref],
+    () => () => {
+      const current = findCollectionRef(name, normalizedOptions);
+      return current ? `ref:${getRefRevision(current)}` : "missing";
+    },
+    [signature, name, normalizedOptions],
   );
   useSyncExternalStore(subscribeToRef, getVersion, getVersion);
-  return ref;
+  return ref ?? emptyRef.current;
 }
 
 export function useItem(
@@ -231,7 +281,7 @@ export function useItem(
   options: FetchItemOptions = {},
 ): ItemRef {
   const React = ensureReact();
-  const { useEffect, useMemo, useSyncExternalStore } = React;
+  const { useEffect, useMemo, useRef, useSyncExternalStore } = React;
 
   const signature = buildItemSignature(typeName, id, level, options);
   const normalizedOptions = useMemo(
@@ -239,22 +289,39 @@ export function useItem(
     [signature],
   );
   const levelArg = level == null ? null : level;
-  const ref = getItemRef(typeName, id);
+  const ref = findItemRef(typeName, id);
+  const emptyRef = useRef<ItemRef | null>(null);
+  const fetchedSignature = useRef<string | null>(null);
+  if (!emptyRef.current) emptyRef.current = emptyItemRef();
 
   useEffect(() => {
-    fetchItem(typeName, id, levelArg, normalizedOptions);
+    const effectOptions = fetchedSignature.current === signature
+      ? { ...normalizedOptions, force: false }
+      : normalizedOptions;
+    fetchedSignature.current = signature;
+    const fetchedRef = fetchItem(typeName, id, levelArg, effectOptions);
+    retainRef(fetchedRef);
+    return () => releaseRef(fetchedRef);
   }, [signature, typeName, id, levelArg, normalizedOptions]);
 
   const subscribeToRef = useMemo(
-    () => (listener: () => void) => subscribeRef(ref, listener),
-    [ref],
+    () => (listener: () => void) => {
+      const current = findItemRef(typeName, id);
+      return current
+        ? subscribeRef(current, listener)
+        : coreOnChange(listener);
+    },
+    [signature, typeName, id],
   );
   const getVersion = useMemo(
-    () => () => getRefRevision(ref),
-    [ref],
+    () => () => {
+      const current = findItemRef(typeName, id);
+      return current ? `ref:${getRefRevision(current)}` : "missing";
+    },
+    [signature, typeName, id],
   );
   useSyncExternalStore(subscribeToRef, getVersion, getVersion);
-  return ref;
+  return ref ?? emptyRef.current;
 }
 
 export function useDLState<T = unknown>(

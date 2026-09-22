@@ -63,8 +63,13 @@ interface AlpineInitOptions extends InitOptions {
 const DEFAULT_STORE_NAME = "lib";
 let storeName = DEFAULT_STORE_NAME;
 let alpineReady = false;
-const bridges = new WeakMap<object, CollectionRef | ItemRef>();
-const pendingRequests = new WeakMap<object, Set<string>>();
+interface BridgeEntry {
+  bridge: CollectionRef | ItemRef;
+  bindings: Map<string, { resolve: () => CollectionRef | ItemRef; request: () => void }>;
+}
+
+const bridges = new WeakMap<object, BridgeEntry>();
+const pendingRequests = new WeakMap<object, Map<string, () => void>>();
 const forcedReads = new WeakMap<object, Set<string>>();
 
 // ---- Helpers --------------------------------------------------------------
@@ -77,32 +82,35 @@ function resolveWindow(): (Window & { Alpine?: AlpineInstance }) | undefined {
 function queueRequest(
   ref: object,
   key: string,
+  force: boolean,
   request: () => void,
 ): void {
+  if (force) {
+    let forced = forcedReads.get(ref);
+    if (!forced) {
+      forced = new Set();
+      forcedReads.set(ref, forced);
+    }
+    if (forced.has(key)) return;
+    forced.add(key);
+  }
+
   let pending = pendingRequests.get(ref);
   if (!pending) {
-    pending = new Set();
+    pending = new Map();
     pendingRequests.set(ref, pending);
   }
-  if (pending.has(key)) return;
-  pending.add(key);
+  if (pending.has(key)) {
+    if (force) pending.set(key, request);
+    return;
+  }
+  pending.set(key, request);
   const currentPending = pending;
   queueMicrotask(() => {
+    const queued = currentPending.get(key);
     currentPending.delete(key);
-    request();
+    queued?.();
   });
-}
-
-function shouldQueueRequest(ref: object, key: string, force: boolean): boolean {
-  if (!force) return true;
-  let forced = forcedReads.get(ref);
-  if (!forced) {
-    forced = new Set();
-    forcedReads.set(ref, forced);
-  }
-  if (forced.has(key)) return false;
-  forced.add(key);
-  return true;
 }
 
 function releaseForcedRead(
@@ -120,16 +128,48 @@ function releaseForcedRead(
 function bridgeRef<T extends CollectionRef | ItemRef>(
   Alpine: AlpineInstance,
   ref: T,
+  key: string,
+  resolve: () => T,
+  request: () => void,
 ): T {
   const existing = bridges.get(ref);
-  if (existing) return existing as T;
+  if (existing) {
+    existing.bindings.set(key, { resolve, request });
+    return existing.bridge as T;
+  }
 
   const bridge = Alpine.reactive({ data: ref.data, meta: ref.meta }) as T;
-  bridges.set(ref, bridge);
-  coreOnRefChange(ref, () => {
-    bridge.data = ref.data as T["data"];
-    bridge.meta = ref.meta as T["meta"];
-  });
+  const entry: BridgeEntry = {
+    bridge,
+    bindings: new Map([[key, { resolve, request }]]),
+  };
+  let current: CollectionRef | ItemRef = ref;
+  let unsubscribe = (): void => {};
+  let rebindPending = false;
+
+  const bind = (next: CollectionRef | ItemRef): void => {
+    unsubscribe();
+    current = next;
+    bridges.set(next, entry);
+    bridge.data = next.data as T["data"];
+    bridge.meta = next.meta as T["meta"];
+    unsubscribe = coreOnRefChange(next, () => {
+      bridge.data = next.data as T["data"];
+      bridge.meta = next.meta as T["meta"];
+      if (next.meta.lastUsedAt !== null || rebindPending) return;
+      rebindPending = true;
+      queueMicrotask(() => {
+        rebindPending = false;
+        if (current !== next) return;
+        const bindings = [...entry.bindings.values()];
+        const replacement = bindings[0]?.resolve();
+        if (!replacement) return;
+        if (replacement !== current) bind(replacement);
+        for (const binding of bindings) binding.request();
+      });
+    });
+  };
+  bind(ref);
   return bridge;
 }
 
@@ -158,15 +198,19 @@ export function ensureAlpineStore(
       _state: coreState(),
       col(collectionName: string, opts = {}) {
         const ref = getCollectionRef(collectionName, opts);
-        const bridge = bridgeRef(Alpine, ref);
+        const bridge = bridgeRef(
+          Alpine,
+          ref,
+          "collection",
+          () => getCollectionRef(collectionName, opts),
+          () => fetchCollection(collectionName, { ...opts, force: false }),
+        );
         const force = !!(opts as { force?: boolean }).force;
         const requestKey = "collection";
-        if (shouldQueueRequest(ref, requestKey, force)) {
-          queueRequest(ref, requestKey, () => {
-            if (force) releaseForcedRead(ref, requestKey);
-            fetchCollection(collectionName, opts);
-          });
-        }
+        queueRequest(ref, requestKey, force, () => {
+          if (force) releaseForcedRead(ref, requestKey);
+          fetchCollection(collectionName, opts);
+        });
         return bridge;
       },
       it(
@@ -176,22 +220,26 @@ export function ensureAlpineStore(
         opts = {},
       ) {
         const ref = getItemRef(typeName, id);
-        const bridge = bridgeRef(Alpine, ref);
-        const force = !!(opts as { force?: boolean }).force;
         const requestKey = `item:${level ?? "default"}`;
-        if (shouldQueueRequest(ref, requestKey, force)) {
-          queueRequest(ref, requestKey, () => {
-            if (force) releaseForcedRead(ref, requestKey);
-            fetchItem(typeName, id, level, opts);
-          });
-        }
+        const bridge = bridgeRef(
+          Alpine,
+          ref,
+          requestKey,
+          () => getItemRef(typeName, id),
+          () => fetchItem(typeName, id, level, { ...opts, force: false }),
+        );
+        const force = !!(opts as { force?: boolean }).force;
+        queueRequest(ref, requestKey, force, () => {
+          if (force) releaseForcedRead(ref, requestKey);
+          fetchItem(typeName, id, level, opts);
+        });
         return bridge;
       },
       apply(directives: Directive[]) {
         return applyDirectives(directives);
       },
       state() {
-        return (this as AlpineStore)._state;
+        return (Alpine.store(storeName) as AlpineStore)._state;
       },
     } satisfies AlpineStore);
     alpineReady = true;

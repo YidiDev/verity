@@ -47,7 +47,6 @@ export function devtools(): Readonly<Record<string, unknown>> {
         if (!cfg) continue;
         levels[levelName] = {
           stalenessMs: cfg.stalenessMs,
-          errorRetryMs: cfg.errorRetryMs,
           hasBulkFetch: typeof cfg.bulkFetch === "function",
           hasCustomCheck: cfg.check !== defaultCheck,
         };
@@ -72,7 +71,6 @@ export function devtools(): Readonly<Record<string, unknown>> {
 
     types[name] = {
       stalenessMs: T.stalenessMs,
-      errorRetryMs: T.errorRetryMs,
       hasBulkFetch: typeof T.bulkFetch === "function",
       items,
       levels,
@@ -97,7 +95,6 @@ export function devtools(): Readonly<Record<string, unknown>> {
 
     collections[name] = {
       stalenessMs: C.stalenessMs,
-      errorRetryMs: C.errorRetryMs,
       refs,
     };
   }

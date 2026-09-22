@@ -244,6 +244,45 @@ describe("applyDirectives", () => {
       expect(fetchFn).toHaveBeenCalledTimes(2);
       expect(ref.data.name).toBe("Recovered");
     });
+
+    it("directly retries a failed level when conversion remains unsatisfied", async () => {
+      const DLCore = freshCore();
+      DLCore.configureMemory({ enabled: false });
+      DLCore.configureSse({ enabled: false });
+      const summaryFetch = vi.fn().mockResolvedValue({ title: "Summary" });
+      const detailFetch = vi.fn()
+        .mockRejectedValueOnce(new Error("detail offline"))
+        .mockResolvedValueOnce({ description: "Recovered detail" });
+      DLCore.createType("widget", {
+        fetch: vi.fn(),
+        levels: {
+          summary: {
+            fetch: summaryFetch,
+            checkIfExists: (data) => Boolean(data?.title),
+          },
+          detail: {
+            fetch: detailFetch,
+            checkIfExists: (data) => Boolean(data?.description),
+          },
+        },
+        levelConversionMap: { summary: ["detail"] },
+      });
+
+      const ref = DLCore.fetchItem("widget", "1", "summary");
+      await tick();
+      DLCore.fetchItem("widget", "1", "detail");
+      await tick();
+
+      await DLCore.applyDirectives([
+        { op: "refresh_item", name: "widget", id: "1" },
+      ]);
+      await tick();
+
+      expect(summaryFetch).toHaveBeenCalledTimes(2);
+      expect(detailFetch).toHaveBeenCalledTimes(2);
+      expect(ref.data.description).toBe("Recovered detail");
+      expect(ref.meta.failedLevels.detail).toBeUndefined();
+    });
   });
 
   describe("invalidate", () => {

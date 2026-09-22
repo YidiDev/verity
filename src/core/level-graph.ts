@@ -2,11 +2,13 @@
 // verity-dl  –  Level conversion graph application
 // ---------------------------------------------------------------------------
 
-import { LEVEL_DEFAULT, defaultCheck } from "./constants.js";
+import { LEVEL_DEFAULT, defaultCheck, fromLevelKey } from "./constants.js";
+import { G } from "./state.js";
+import { itemKey } from "./params.js";
 import {
   assignRef,
   finalizeItemMeta,
-  latestItemFailureError,
+  latestItemError,
 } from "./ref-helpers.js";
 import type { TypeEntry, ItemRef, ItemMeta } from "./types.js";
 
@@ -17,8 +19,8 @@ import type { TypeEntry, ItemRef, ItemMeta } from "./types.js";
  */
 export function applyFetchedLevel(
   T: TypeEntry,
-  _typeName: string,
-  _id: unknown,
+  typeName: string,
+  id: unknown,
   ref: ItemRef,
   sourceLevelKey: string,
   data: unknown,
@@ -33,9 +35,6 @@ export function applyFetchedLevel(
 
   const nextLevelStamps: Record<string, string | null> = {
     ...ref.meta.levelStamps,
-  };
-  const nextLevelFailureStamps: Record<string, string | null> = {
-    ...(ref.meta.levelFailureStamps || {}),
   };
   const nextLevelErrors: Record<string, string | null> = {
     ...(ref.meta.levelErrors || {}),
@@ -65,7 +64,6 @@ export function applyFetchedLevel(
     if (!levelSatisfies(levelKey)) return false;
 
     nextLevelStamps[levelKey] = timestamp;
-    delete nextLevelFailureStamps[levelKey];
     delete nextLevelErrors[levelKey];
     stampedLevels.add(levelKey);
     queue.push(levelKey);
@@ -74,7 +72,6 @@ export function applyFetchedLevel(
 
   // Always stamp the source level
   nextLevelStamps[sourceLevelKey] = timestamp;
-  delete nextLevelFailureStamps[sourceLevelKey];
   delete nextLevelErrors[sourceLevelKey];
   enqueueIfSatisfied(sourceLevelKey);
 
@@ -91,20 +88,14 @@ export function applyFetchedLevel(
   }
 
   const nextFailedLevels = { ...(ref.meta.failedLevels || {}) };
-  const nextLevelErrors = { ...(ref.meta.levelErrors || {}) };
   for (const levelKey of stampedLevels) {
     delete nextFailedLevels[levelKey];
     delete nextLevelErrors[levelKey];
   }
   const overrides: Partial<ItemMeta> = {
-    error: latestItemFailureError(
-      ref.meta,
-      nextLevelErrors,
-      nextLevelFailureStamps,
-    ),
+    error: latestItemError(nextLevelErrors),
     lastFetchedAny: timestamp,
     levelStamps: nextLevelStamps,
-    levelFailureStamps: nextLevelFailureStamps,
     levelErrors: nextLevelErrors,
     isLoading: false, // Fetch completed successfully, clear loading state
     failedLevels: nextFailedLevels,
@@ -117,6 +108,27 @@ export function applyFetchedLevel(
     overrides,
     options,
   );
+
+  const activeLevelQueryIds = { ...nextMeta.activeLevelQueryIds };
+  const supersededQueryIds = new Set<string>();
+  for (const levelKey of stampedLevels) {
+    const activeQid = activeLevelQueryIds[levelKey];
+    if (activeQid && activeQid !== qid) supersededQueryIds.add(activeQid);
+    delete activeLevelQueryIds[levelKey];
+  }
+  nextMeta.activeLevelQueryIds = activeLevelQueryIds;
+  if (
+    nextMeta.activeQueryId &&
+    supersededQueryIds.has(nextMeta.activeQueryId)
+  ) {
+    nextMeta.activeQueryId = null;
+  }
+  nextMeta.isLoading = Object.keys(activeLevelQueryIds).some((levelKey) => {
+    const bucket = G.inFlightItm.get(
+      itemKey(typeName, id, fromLevelKey(levelKey)),
+    );
+    return bucket?.loud === true;
+  });
 
   assignRef(ref, { data: nextData, meta: nextMeta });
 }

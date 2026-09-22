@@ -24,6 +24,7 @@ export const G: GlobalState = {
   listeners: [],
   refListeners: new WeakMap(),
   refRevisions: new WeakMap(),
+  refRetainers: new WeakMap(),
   directiveSource: null,
 
   sse: {

@@ -5,6 +5,7 @@
 import { G } from "./state.js";
 import { PARAM_DEFAULT_KEY } from "./constants.js";
 import { emitLifecycle } from "./lifecycle.js";
+import { isRefRetained } from "./reactivity.js";
 import {
   assignRef,
   hasAnyActiveLevels,
@@ -97,7 +98,6 @@ function evictCollectionEntry(
         error: null,
         activeQueryId: null,
         lastFetched: null,
-        lastFailedAt: null,
         lastUsedAt: null,
       },
     });
@@ -123,7 +123,6 @@ function evictItemEntry(typeName: string, id: string, ref: ItemRef): void {
         activeQueryId: null,
         lastFetchedAny: null,
         levelStamps: {},
-        levelFailureStamps: {},
         failedLevels: {},
         levelErrors: {},
         lastUsedAt: null,
@@ -152,6 +151,7 @@ function pruneCollections(now: number): { scanned: number; evicted: number } {
     const candidates: { key: string; entry: CollectionRef; lastUsed: number }[] = [];
     for (const [key, entry] of C.refs) {
       if (key === PARAM_DEFAULT_KEY) continue;
+      if (isRefRetained(entry)) continue;
       const meta = entry.meta || {};
       if (meta.isLoading || meta.activeQueryId || hasAnyActiveLevels(meta as never))
         {continue;}
@@ -188,6 +188,7 @@ function pruneItems(now: number): { scanned: number; evicted: number } {
     if (!T || !T.items) continue;
     const candidates: { id: string; ref: ItemRef; lastUsed: number }[] = [];
     for (const [id, ref] of T.items) {
+      if (isRefRetained(ref)) continue;
       const meta = ref.meta || ({} as ItemRef["meta"]);
       if (meta.isLoading || meta.activeQueryId || hasAnyActiveLevels(meta))
         {continue;}

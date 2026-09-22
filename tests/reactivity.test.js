@@ -250,6 +250,22 @@ describe("onRefChange reactivity", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("keeps duplicate callback registrations independent", async () => {
+    const DLCore = setup();
+    DLCore.createType("test", { fetch: async (id) => ({ id }) });
+    const ref = DLCore.getItemRef("test", 1);
+    const listener = vi.fn();
+    const unsubscribeFirst = DLCore.onRefChange(ref, listener);
+    const unsubscribeSecond = DLCore.onRefChange(ref, listener);
+
+    unsubscribeFirst();
+    DLCore.fetchItem("test", 1);
+    await vi.waitFor(() => expect(ref.data).not.toBeNull());
+
+    expect(listener).toHaveBeenCalled();
+    unsubscribeSecond();
+  });
+
   it("increments the ref revision before notifying listeners", () => {
     const DLCore = setup();
     DLCore.createType("test", { fetch: async (id) => ({ id }) });

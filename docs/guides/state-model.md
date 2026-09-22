@@ -280,26 +280,25 @@ const user = DL.fetchItem('user', 123)
 
 **No flicker:** Old data stays visible during refetch.
 
-### After Failure: Settles Before Retry
+### After Failure: Settles Until Explicit Retry
 
-Failed fetches remain as an honest error state instead of being restarted by every component render. Ordinary reads use a 30-second retry cooldown by default; configure `errorRetryMs` with a positive, finite duration on a type, level, or collection when another interval is appropriate.
+Failed fetches remain as an honest error state instead of being restarted by every component render. Ordinary reads do not retry a failed request. Retry from an explicit user action with `{ force: true }`, or let a server refresh directive request the retry.
 
 ```javascript
 DL.createType('user', {
-  fetch: fetchUser,
-  errorRetryMs: 10_000
+  fetch: fetchUser
 })
 
 const user = DL.fetchItem('user', 123)
 // After rejection: user.meta.error contains the error string.
-// Re-reading during the cooldown does not issue another request.
+// Re-reading does not issue another request.
 
 retryButton.addEventListener('click', () => {
   DL.fetchItem('user', 123, null, { force: true })
 })
 ```
 
-A successful fetch or inline directive result clears the corresponding failure marker. Item failure cooldowns and errors are tracked per level, so unrelated level success does not hide an unresolved error. Parameterized collections are tracked per parameter set.
+A successful fetch or inline directive result clears the corresponding failure marker. Item failures and errors are tracked per level, so unrelated level success does not hide an unresolved error. Parameterized collections are tracked per parameter set.
 
 ---
 

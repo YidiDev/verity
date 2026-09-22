@@ -15,6 +15,8 @@ export {
   fetchItem,
   getCollectionRef,
   getItemRef,
+} from "./public-fetch.js";
+export {
   isItemLoading,
   isCollectionLoading,
   hasAnyInFlightRequests,

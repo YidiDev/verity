@@ -31,15 +31,35 @@ export function onRefChange(ref: object, cb: () => void): () => void {
     listeners = new Set();
     G.refListeners.set(ref, listeners);
   }
-  listeners.add(cb);
+  const listener = (): void => cb();
+  listeners.add(listener);
 
   let active = true;
   return () => {
     if (!active) return;
     active = false;
-    listeners.delete(cb);
+    listeners.delete(listener);
     if (!listeners.size) G.refListeners.delete(ref);
   };
+}
+
+/** Prevents an actively observed ref from being evicted. */
+export function retainRef(ref: object): void {
+  G.refRetainers.set(ref, (G.refRetainers.get(ref) ?? 0) + 1);
+}
+
+/** Releases one active-observer hold on a ref. */
+export function releaseRef(ref: object): void {
+  const count = G.refRetainers.get(ref) ?? 0;
+  if (count <= 1) {
+    G.refRetainers.delete(ref);
+  } else {
+    G.refRetainers.set(ref, count - 1);
+  }
+}
+
+export function isRefRetained(ref: object): boolean {
+  return (G.refRetainers.get(ref) ?? 0) > 0;
 }
 
 /** Returns the current change revision for one ref. */
