@@ -22,6 +22,9 @@ export const G: GlobalState = {
   collections: new Map(),
 
   listeners: [],
+  refListeners: new WeakMap(),
+  refRevisions: new WeakMap(),
+  refRetainers: new WeakMap(),
   directiveSource: null,
 
   sse: {

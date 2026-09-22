@@ -42,9 +42,9 @@ graph LR
 
 ### Reactive Reads and Retries
 
-Alpine getters and Vue computed or render functions may safely call `it()` and `col()`. When a fetch fails, Verity keeps the error state settled for the type, level, or collection's `errorRetryMs` cooldown instead of starting another request on every reactive read.
+Alpine getters and Vue computed or render functions may safely call `it()` and `col()`. When a fetch fails, Verity keeps the error state settled instead of starting another request on every reactive read.
 
-Use `{ force: true }` only for imperative refreshes, such as a Retry button. Keeping `force: true` inside a getter or render function intentionally starts a request after every completion and cannot settle.
+Use `{ force: true }` for explicit refreshes, such as a Retry button. Alpine and Vue consume a forced reactive read once so completion-driven rerenders do not create another request.
 
 ---
 
@@ -851,6 +851,30 @@ function DataView() {
   )
 }
 ```
+
+---
+
+### Pattern: Reactive Reads and Explicit Retry
+
+Item and collection reads are safe inside Alpine getters, Vue computed values,
+and framework render functions. Each adapter subscribes to the specific ref it
+returns, so an update to one entity does not invalidate readers of another.
+The global `state()` surface remains globally reactive by design.
+
+When a fetch fails, the ref settles with `meta.isLoading === false` and the
+error in `meta.error`. Re-reading the ref does not start another request. Retry
+explicitly after a user action:
+
+```javascript
+// Alpine
+$store.lib.it('user', userId, null, { force: true })
+
+// Vue
+dl.it('user', userId, null, { force: true })
+```
+
+Server-authored refresh directives also bypass the settled error and retry the
+request. This prevents render loops while keeping retry decisions intentional.
 
 ---
 

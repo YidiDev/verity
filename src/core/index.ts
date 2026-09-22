@@ -8,11 +8,15 @@ import "./init.js";
 // ---- Core API -------------------------------------------------------------
 
 export { init } from "./init.js";
-export { onChange } from "./reactivity.js";
+export { onChange, onRefChange, getRefRevision } from "./reactivity.js";
 export { createType, createCollection } from "./registry.js";
 export {
   fetchCollection,
   fetchItem,
+  getCollectionRef,
+  getItemRef,
+} from "./public-fetch.js";
+export {
   isItemLoading,
   isCollectionLoading,
   hasAnyInFlightRequests,

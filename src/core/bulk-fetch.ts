@@ -210,6 +210,8 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
       if (bulkError) {
         const nextMeta = finalizeItemFailureMeta(
           ref,
+          bucket.typeName,
+          id,
           canonicalLevel,
           qid,
           bulkError,
@@ -243,6 +245,8 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
           if (isLevelActive(ref.meta, canonicalLevel, qid)) {
             const nextMeta = finalizeItemFailureMeta(
               ref,
+              bucket.typeName,
+              id,
               canonicalLevel,
               qid,
               fallbackErr,
@@ -299,6 +303,8 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
       } else {
         const nextMeta = finalizeItemFailureMeta(
           ref,
+          bucket.typeName,
+          id,
           canonicalLevel,
           qid,
           "Bulk fetch missing data",
@@ -318,6 +324,8 @@ async function flushBulkQueue(queueKey: string): Promise<void> {
       if (ref && ref.meta && isLevelActive(ref.meta, canonicalLevel, qid)) {
         const nextMeta = finalizeItemFailureMeta(
           ref,
+          bucket.typeName,
+          id,
           canonicalLevel,
           qid,
           err,

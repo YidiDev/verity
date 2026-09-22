@@ -107,7 +107,6 @@ describe("fetchCollection", () => {
 
     expect(ref.meta.isLoading).toBe(false);
     expect(ref.meta.error).toContain("network failure");
-    expect(ref.meta.lastFailedAt).not.toBeNull();
 
     const onChange = vi.fn();
     const unsubscribe = DLCore.onChange(onChange);
@@ -119,7 +118,7 @@ describe("fetchCollection", () => {
     unsubscribe();
   });
 
-  it("force: true retries a failed collection and clears its cooldown", async () => {
+  it("force: true retries a failed collection and clears its error", async () => {
     const DLCore = freshCore();
     DLCore.configureMemory({ enabled: false });
     DLCore.configureSse({ enabled: false });
@@ -137,47 +136,77 @@ describe("fetchCollection", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(ref.data.ids).toEqual([1]);
     expect(ref.meta.error).toBeNull();
-    expect(ref.meta.lastFailedAt).toBeNull();
   });
 
-  it("retries a failed refresh after its cooldown even while cached data is fresh", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+  it("queues a forced collection retry requested by an error listener", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ ids: [1], count: 1 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
 
-    try {
-      const DLCore = freshCore();
-      DLCore.configureMemory({ enabled: false });
-      DLCore.configureSse({ enabled: false });
+    const ref = DLCore.getCollectionRef("widgets");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.error) {
+        retried = true;
+        DLCore.fetchCollection("widgets", { force: true });
+      }
+    });
+    DLCore.fetchCollection("widgets");
 
-      const fetchFn = vi.fn()
-        .mockResolvedValueOnce({ ids: [1], count: 1 })
-        .mockRejectedValueOnce(new Error("refresh failed"))
-        .mockResolvedValueOnce({ ids: [1, 2], count: 2 });
-      DLCore.createCollection("widgets", {
-        fetch: fetchFn,
-        stalenessMs: 60_000,
-        errorRetryMs: 1_000,
-      });
+    await vi.waitFor(() => expect(ref.data.ids).toEqual([1]));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
 
-      const ref = DLCore.fetchCollection("widgets");
-      await vi.advanceTimersByTimeAsync(0);
-      DLCore.fetchCollection("widgets", { force: true });
-      await vi.advanceTimersByTimeAsync(0);
+  it("queues a forced collection retry requested by a loading listener", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({ ids: [1], count: 1 })
+      .mockResolvedValueOnce({ ids: [1, 2], count: 2 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
 
-      DLCore.fetchCollection("widgets");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(fetchFn).toHaveBeenCalledTimes(2);
+    const ref = DLCore.getCollectionRef("widgets");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.isLoading) {
+        retried = true;
+        DLCore.fetchCollection("widgets", { force: true });
+      }
+    });
+    DLCore.fetchCollection("widgets");
 
-      await vi.advanceTimersByTimeAsync(1_000);
-      DLCore.fetchCollection("widgets");
-      await vi.advanceTimersByTimeAsync(0);
+    await vi.waitFor(() => expect(ref.data.ids).toEqual([1, 2]));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
 
-      expect(fetchFn).toHaveBeenCalledTimes(3);
-      expect(ref.data.ids).toEqual([1, 2]);
-      expect(ref.meta.lastFailedAt).toBeNull();
-    } finally {
-      vi.useRealTimers();
-    }
+  it("does not retry a failed collection without force", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ ids: [1], count: 1 });
+    DLCore.createCollection("widgets", { fetch: fetchFn });
+
+    const ref = DLCore.fetchCollection("widgets");
+    await tick();
+    DLCore.fetchCollection("widgets");
+    await tick();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(ref.meta.error).toContain("offline");
+
+    DLCore.fetchCollection("widgets", { force: true });
+    await tick();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(ref.meta.error).toBeNull();
   });
 
   it("parameterized fetch: different params create different ref entries", async () => {
@@ -307,7 +336,7 @@ describe("fetchItem", () => {
 
     expect(ref.meta.isLoading).toBe(false);
     expect(ref.meta.error).toContain("server error");
-    expect(ref.meta.levelFailureStamps.default).toEqual(expect.any(String));
+    expect(ref.meta.failedLevels.default).toBe(true);
 
     const onChange = vi.fn();
     const unsubscribe = DLCore.onChange(onChange);
@@ -319,7 +348,7 @@ describe("fetchItem", () => {
     unsubscribe();
   });
 
-  it("force: true retries a failed item and clears its level cooldown", async () => {
+  it("force: true retries a failed item and clears its level error", async () => {
     const DLCore = freshCore();
     DLCore.configureMemory({ enabled: false });
     DLCore.configureSse({ enabled: false });
@@ -337,11 +366,59 @@ describe("fetchItem", () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     expect(ref.data).toEqual(expect.objectContaining({ name: "Recovered" }));
     expect(ref.meta.error).toBeNull();
-    expect(ref.meta.levelFailureStamps.default).toBeUndefined();
+    expect(ref.meta.failedLevels.default).toBeUndefined();
     expect(ref.meta.levelErrors.default).toBeUndefined();
   });
 
-  it("tracks retry cooldowns independently for each item level", async () => {
+  it("queues a forced item retry requested by an error listener", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ id: "1", name: "Recovered" });
+    DLCore.createType("widget", { fetch: fetchFn });
+
+    const ref = DLCore.getItemRef("widget", "1");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.error) {
+        retried = true;
+        DLCore.fetchItem("widget", "1", null, { force: true });
+      }
+    });
+    DLCore.fetchItem("widget", "1");
+
+    await vi.waitFor(() => expect(ref.data?.name).toBe("Recovered"));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("queues a forced item retry requested by a loading listener", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce({ id: "1", attempt: 1 })
+      .mockResolvedValueOnce({ id: "1", attempt: 2 });
+    DLCore.createType("widget", { fetch: fetchFn });
+
+    const ref = DLCore.getItemRef("widget", "1");
+    let retried = false;
+    const unsubscribe = DLCore.onRefChange(ref, () => {
+      if (!retried && ref.meta.isLoading) {
+        retried = true;
+        DLCore.fetchItem("widget", "1", null, { force: true });
+      }
+    });
+    DLCore.fetchItem("widget", "1");
+
+    await vi.waitFor(() => expect(ref.data?.attempt).toBe(2));
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    unsubscribe();
+  });
+
+  it("tracks failures independently for each item level", async () => {
     const DLCore = freshCore();
     DLCore.configureMemory({ enabled: false });
     DLCore.configureSse({ enabled: false });
@@ -367,7 +444,7 @@ describe("fetchItem", () => {
     expect(detailFetch).toHaveBeenCalledTimes(1);
     expect(defaultFetch).toHaveBeenCalledTimes(1);
     expect(ref.data).toEqual(expect.objectContaining({ name: "Summary" }));
-    expect(ref.meta.levelFailureStamps.detail).toEqual(expect.any(String));
+    expect(ref.meta.failedLevels.detail).toBe(true);
     expect(ref.meta.levelErrors.detail).toContain("detail failed");
     expect(ref.meta.error).toContain("detail failed");
   });
@@ -404,57 +481,204 @@ describe("fetchItem", () => {
     DLCore.fetchItem("widget", "1", "permissions", { force: true });
     await tick();
 
-    expect(ref.meta.levelFailureStamps.permissions).toBeUndefined();
+    expect(ref.meta.failedLevels.permissions).toBeUndefined();
     expect(ref.meta.levelErrors.permissions).toBeUndefined();
-    expect(ref.meta.levelFailureStamps.detail).toEqual(expect.any(String));
+    expect(ref.meta.failedLevels.detail).toBe(true);
     expect(ref.meta.error).toContain("detail failed");
   });
 
-  it("uses a level retry cooldown before type freshness when a refresh fails", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
-
-    try {
-      const DLCore = freshCore();
-      DLCore.configureMemory({ enabled: false });
-      DLCore.configureSse({ enabled: false });
-
-      const detailFetch = vi.fn()
-        .mockResolvedValueOnce({ id: "1", description: "Cached" })
-        .mockRejectedValueOnce(new Error("refresh failed"))
-        .mockResolvedValueOnce({ id: "1", description: "Recovered" });
-      DLCore.createType("widget", {
-        fetch: vi.fn(),
-        stalenessMs: 60_000,
-        errorRetryMs: 10_000,
-        levels: {
-          detail: {
-            fetch: detailFetch,
-            errorRetryMs: 1_000,
-            checkIfExists: (data) => Boolean(data?.description),
-          },
+  it("ignores an older failure after another level converts into it", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    let rejectDetail;
+    const detailFetch = vi.fn(() => new Promise((_, reject) => {
+      rejectDetail = reject;
+    }));
+    const fullFetch = vi.fn().mockResolvedValue({
+      id: "1",
+      description: "Converted detail",
+      complete: true,
+    });
+    DLCore.createType("widget", {
+      fetch: vi.fn(),
+      levels: {
+        detail: {
+          fetch: detailFetch,
+          checkIfExists: (data) => Boolean(data?.description),
         },
-      });
+        full: {
+          fetch: fullFetch,
+          checkIfExists: (data) => Boolean(data?.complete),
+        },
+      },
+      levelConversionMap: { full: ["detail"] },
+    });
 
-      const ref = DLCore.fetchItem("widget", "1", "detail");
-      await vi.advanceTimersByTimeAsync(0);
-      DLCore.fetchItem("widget", "1", "detail", { force: true });
-      await vi.advanceTimersByTimeAsync(0);
+    const ref = DLCore.fetchItem("widget", "1", "detail");
+    await Promise.resolve();
+    DLCore.fetchItem("widget", "1", "full");
+    await vi.waitFor(() => expect(ref.data?.description).toBe("Converted detail"));
+    rejectDetail(new Error("stale detail failure"));
+    await tick();
 
-      DLCore.fetchItem("widget", "1", "detail");
-      await vi.advanceTimersByTimeAsync(0);
-      expect(detailFetch).toHaveBeenCalledTimes(2);
+    expect(ref.meta.failedLevels.detail).toBeUndefined();
+    expect(ref.meta.levelErrors.detail).toBeUndefined();
+    expect(ref.meta.error).toBeNull();
+  });
 
-      await vi.advanceTimersByTimeAsync(1_000);
-      DLCore.fetchItem("widget", "1", "detail");
-      await vi.advanceTimersByTimeAsync(0);
+  it("keeps loading true while another loud level remains active", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    let resolveSummary;
+    let resolvePermissions;
+    DLCore.createType("widget", {
+      fetch: vi.fn(),
+      levels: {
+        summary: {
+          fetch: () => new Promise((resolve) => {
+            resolveSummary = resolve;
+          }),
+          checkIfExists: (data) => Boolean(data?.title),
+        },
+        permissions: {
+          fetch: () => new Promise((resolve) => {
+            resolvePermissions = resolve;
+          }),
+          checkIfExists: (data) => Boolean(data?.permissions),
+        },
+      },
+    });
 
-      expect(detailFetch).toHaveBeenCalledTimes(3);
-      expect(ref.data).toEqual(expect.objectContaining({ description: "Recovered" }));
-      expect(ref.meta.levelFailureStamps.detail).toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
+    const ref = DLCore.fetchItem("widget", "1", "summary");
+    DLCore.fetchItem("widget", "1", "permissions");
+    await Promise.resolve();
+    resolveSummary({ title: "Summary" });
+    await vi.waitFor(() => expect(ref.data?.title).toBe("Summary"));
+    expect(ref.meta.isLoading).toBe(true);
+
+    resolvePermissions({ permissions: ["read"] });
+    await vi.waitFor(() => expect(ref.meta.isLoading).toBe(false));
+  });
+
+  it("keeps loading true when another loud level remains after a failure", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    let resolveSummary;
+    let rejectPermissions;
+    DLCore.createType("widget", {
+      fetch: vi.fn(),
+      levels: {
+        summary: {
+          fetch: () => new Promise((resolve) => {
+            resolveSummary = resolve;
+          }),
+          checkIfExists: (data) => Boolean(data?.title),
+        },
+        permissions: {
+          fetch: () => new Promise((_, reject) => {
+            rejectPermissions = reject;
+          }),
+          checkIfExists: (data) => Boolean(data?.permissions),
+        },
+      },
+    });
+
+    const ref = DLCore.fetchItem("widget", "1", "summary");
+    DLCore.fetchItem("widget", "1", "permissions");
+    await Promise.resolve();
+    rejectPermissions(new Error("permissions failed"));
+    await vi.waitFor(() => expect(ref.meta.error).toContain("permissions failed"));
+    expect(ref.meta.isLoading).toBe(true);
+
+    resolveSummary({ title: "Summary" });
+    await vi.waitFor(() => expect(ref.meta.isLoading).toBe(false));
+  });
+
+  it("preserves the most recent unresolved error after unrelated success", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    DLCore.createType("widget", {
+      fetch: vi.fn(),
+      levels: {
+        alpha: {
+          fetch: vi.fn().mockRejectedValue(new Error("alpha failed")),
+          checkIfExists: (data) => Boolean(data?.alpha),
+        },
+        beta: {
+          fetch: vi.fn().mockRejectedValue(new Error("beta failed")),
+          checkIfExists: (data) => Boolean(data?.beta),
+        },
+        gamma: {
+          fetch: vi.fn().mockResolvedValue({ gamma: true }),
+          checkIfExists: (data) => Boolean(data?.gamma),
+        },
+      },
+    });
+
+    const ref = DLCore.fetchItem("widget", "1", "alpha");
+    await tick();
+    DLCore.fetchItem("widget", "1", "beta");
+    await tick();
+    expect(ref.meta.error).toContain("beta failed");
+
+    DLCore.fetchItem("widget", "1", "gamma");
+    await tick();
+    expect(ref.meta.error).toContain("beta failed");
+  });
+
+  it("does not retry a failed item level without force", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const fetchFn = vi.fn()
+      .mockRejectedValueOnce(new Error("server error"))
+      .mockResolvedValueOnce({ id: "1", name: "Recovered" });
+    DLCore.createType("widget", { fetch: fetchFn });
+
+    const ref = DLCore.fetchItem("widget", "1");
+    await tick();
+    DLCore.fetchItem("widget", "1");
+    await tick();
+
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(ref.meta.failedLevels.default).toBe(true);
+
+    DLCore.fetchItem("widget", "1", null, { force: true });
+    await tick();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(ref.data.name).toBe("Recovered");
+    expect(ref.meta.failedLevels.default).toBeUndefined();
+  });
+
+  it("does not let one failed level block another level", async () => {
+    const DLCore = freshCore();
+    DLCore.configureMemory({ enabled: false });
+    DLCore.configureSse({ enabled: false });
+    const summaryFetch = vi.fn().mockRejectedValue(new Error("summary failed"));
+    const detailFetch = vi.fn().mockResolvedValue({ id: "1", body: "detail" });
+    DLCore.createType("widget", {
+      fetch: async (id) => ({ id }),
+      levels: {
+        summary: { fetch: summaryFetch, checkIfExists: (data) => !!data?.summary },
+        detail: { fetch: detailFetch, checkIfExists: (data) => !!data?.body },
+      },
+    });
+
+    const ref = DLCore.fetchItem("widget", "1", "summary");
+    await tick();
+    DLCore.fetchItem("widget", "1", "detail");
+    await tick();
+
+    expect(summaryFetch).toHaveBeenCalledTimes(1);
+    expect(detailFetch).toHaveBeenCalledTimes(1);
+    expect(ref.data.body).toBe("detail");
+    expect(ref.meta.failedLevels.summary).toBe(true);
+    expect(ref.meta.error).toContain("summary failed");
+    expect(ref.meta.levelErrors.summary).toContain("summary failed");
   });
 
   it("silent: true does not set isLoading", async () => {

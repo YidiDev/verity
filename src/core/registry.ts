@@ -6,7 +6,6 @@ import { G } from "./state.js";
 import {
   PARAM_DEFAULT_KEY,
   LEVEL_DEFAULT,
-  DEFAULT_ERROR_RETRY_MS,
   toLevelKey,
   defaultCheck,
 } from "./constants.js";
@@ -15,13 +14,6 @@ import type {
   CreateCollectionOptions,
   LevelConversionEntry,
 } from "./types.js";
-
-function validateErrorRetryMs(value: number, owner: string): number {
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new RangeError(`${owner} errorRetryMs must be a positive finite number`);
-  }
-  return value;
-}
 
 /**
  * Registers a new data type with the given fetch function and options.
@@ -35,16 +27,11 @@ export function createType(name: string, options: CreateTypeOptions): void {
     fetch,
     bulkFetch = null,
     stalenessMs = 15_000,
-    errorRetryMs = DEFAULT_ERROR_RETRY_MS,
     levelConversionMap = {},
     levels = {},
   } = options;
-  const typeErrorRetryMs = validateErrorRetryMs(
-    errorRetryMs,
-    `Type '${name}'`,
-  );
 
-  const lvl: Record<string, { name: string; fetch: typeof fetch; check: (d: unknown) => boolean; stalenessMs: number; errorRetryMs: number; bulkFetch: typeof bulkFetch }> = {};
+  const lvl: Record<string, { name: string; fetch: typeof fetch; check: (d: unknown) => boolean; stalenessMs: number; bulkFetch: typeof bulkFetch }> = {};
   const convertFrom = new Map<string, Set<string>>();
   const accepts = new Map<string, Set<string>>();
 
@@ -119,10 +106,6 @@ export function createType(name: string, options: CreateTypeOptions): void {
       fetch: cfg.fetch,
       check: cfg.checkIfExists || defaultCheck,
       stalenessMs: cfg.stalenessMs ?? stalenessMs,
-      errorRetryMs: validateErrorRetryMs(
-        cfg.errorRetryMs ?? typeErrorRetryMs,
-        `Level '${levelName}'`,
-      ),
       bulkFetch: typeof cfg.bulkFetch === "function" ? cfg.bulkFetch : null,
     };
     if (cfg.levelConversionMap) {
@@ -136,7 +119,6 @@ export function createType(name: string, options: CreateTypeOptions): void {
     fetch,
     bulkFetch: typeof bulkFetch === "function" ? bulkFetch : null,
     stalenessMs,
-    errorRetryMs: typeErrorRetryMs,
     levels: lvl,
     items: new Map(),
     convertFrom,
@@ -159,19 +141,13 @@ export function createCollection(
   const {
     fetch,
     stalenessMs = 15_000,
-    errorRetryMs = DEFAULT_ERROR_RETRY_MS,
   } = options;
-  const collectionErrorRetryMs = validateErrorRetryMs(
-    errorRetryMs,
-    `Collection '${name}'`,
-  );
 
   const ref = {
     data: { ids: [] as unknown[], count: 0, meta: null as unknown, items: null as unknown },
     meta: {
       isLoading: false,
       lastFetched: null,
-      lastFailedAt: null,
       error: null,
       activeQueryId: null,
       paramsSnapshot: {} as unknown,
@@ -183,7 +159,6 @@ export function createCollection(
   G.collections.set(name, {
     fetch,
     stalenessMs,
-    errorRetryMs: collectionErrorRetryMs,
     ref,
     refs,
   });

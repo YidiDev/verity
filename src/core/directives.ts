@@ -86,7 +86,6 @@ function applyCollectionDirectiveResult(
       isLoading: false,
       error: null,
       lastFetched: ts,
-      lastFailedAt: null,
       activeQueryId: null,
     },
   });
@@ -298,8 +297,16 @@ export function applyDirectives(
       detail.satisfied = satisfiedLevels.size > 0;
       detail.levelsSatisfied = Array.from(satisfiedLevels.values());
       const levelsToRefresh = new Set<string>();
+      const failedLevelsToRefresh = new Set<string>();
       const stamps: Record<string, string | null> =
         ref.meta && ref.meta.levelStamps ? ref.meta.levelStamps : {};
+      const failedLevels = ref.meta?.failedLevels || {};
+
+      for (const [levelName, failed] of Object.entries(failedLevels)) {
+        if (failed && (levelName === LEVEL_DEFAULT || T.levels[levelName])) {
+          failedLevelsToRefresh.add(levelName);
+        }
+      }
 
       for (const [levelName, stamp] of Object.entries(stamps)) {
         if (!stamp) continue;
@@ -330,6 +337,7 @@ export function applyDirectives(
 
       if (
         !levelsToRefresh.size &&
+        !failedLevelsToRefresh.size &&
         !satisfiedLevels.has(LEVEL_DEFAULT)
       ) {
         if (ref.meta && ref.meta.lastFetchedAny) {
@@ -339,11 +347,19 @@ export function applyDirectives(
         }
       }
 
-      if (!levelsToRefresh.size) continue;
+      if (!levelsToRefresh.size && !failedLevelsToRefresh.size) continue;
 
       const fetchPlan = planFetchLevels(T, levelsToRefresh).filter(
         (levelKey) => !satisfiedLevels.has(levelKey),
       );
+      for (const levelKey of failedLevelsToRefresh) {
+        if (
+          !satisfiedLevels.has(levelKey) &&
+          !fetchPlan.includes(levelKey)
+        ) {
+          fetchPlan.push(levelKey);
+        }
+      }
       if (!fetchPlan.length) continue;
       for (const levelKey of fetchPlan) {
         const level = fromLevelKey(levelKey);

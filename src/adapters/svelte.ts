@@ -5,8 +5,11 @@
 import {
   init as coreInit,
   onChange as coreOnChange,
+  onRefChange as coreOnRefChange,
   fetchCollection,
   fetchItem,
+  getCollectionRef,
+  getItemRef,
   applyDirectives,
   state as coreState,
   createType,
@@ -29,6 +32,7 @@ import {
   type CollectionRef,
   type ItemRef,
 } from "../core/index.js";
+import { releaseRef, retainRef } from "../core/reactivity.js";
 
 // ---- Types ----------------------------------------------------------------
 
@@ -149,20 +153,36 @@ export function collectionStore(
     throw new Error("collectionStore requires a collection name");
   }
 
-  let ref: CollectionRef;
-
   return createStore<CollectionRef>(undefined, (set) => {
-    ref = fetchCollection(name, opts);
-    set(ref);
-
-    const unsubscribe = coreOnChange(() => {
+    let ref: CollectionRef | undefined;
+    let active = true;
+    let unsubscribe = (): void => {};
+    const bind = (): void => {
+      const nextRef = getCollectionRef(name, opts);
+      if (nextRef === ref) return;
+      unsubscribe();
+      if (ref) releaseRef(ref);
+      ref = nextRef;
+      retainRef(nextRef);
       set(ref);
-    });
+      unsubscribe = coreOnRefChange(nextRef, () => {
+        set(nextRef);
+        if (nextRef.meta.lastUsedAt === null) {
+          queueMicrotask(() => {
+            if (!active) return;
+            bind();
+            fetchCollection(name, opts);
+          });
+        }
+      });
+    };
+    bind();
+    fetchCollection(name, opts);
 
     return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
+      active = false;
+      unsubscribe();
+      if (ref) releaseRef(ref);
     };
   });
 }
@@ -180,20 +200,36 @@ export function itemStore(
     throw new Error("itemStore requires an id");
   }
 
-  let ref: ItemRef;
-
   return createStore<ItemRef>(undefined, (set) => {
-    ref = fetchItem(typeName, id, level, opts);
-    set(ref);
-
-    const unsubscribe = coreOnChange(() => {
+    let ref: ItemRef | undefined;
+    let active = true;
+    let unsubscribe = (): void => {};
+    const bind = (): void => {
+      const nextRef = getItemRef(typeName, id);
+      if (nextRef === ref) return;
+      unsubscribe();
+      if (ref) releaseRef(ref);
+      ref = nextRef;
+      retainRef(nextRef);
       set(ref);
-    });
+      unsubscribe = coreOnRefChange(nextRef, () => {
+        set(nextRef);
+        if (nextRef.meta.lastUsedAt === null) {
+          queueMicrotask(() => {
+            if (!active) return;
+            bind();
+            fetchItem(typeName, id, level, opts);
+          });
+        }
+      });
+    };
+    bind();
+    fetchItem(typeName, id, level, opts);
 
     return () => {
-      if (typeof unsubscribe === "function") {
-        unsubscribe();
-      }
+      active = false;
+      unsubscribe();
+      if (ref) releaseRef(ref);
     };
   });
 }

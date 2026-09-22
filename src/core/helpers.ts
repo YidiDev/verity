@@ -16,9 +16,7 @@ export {
   isLevelActive,
   finalizeItemMeta,
   finalizeItemFailureMeta,
-  clearItemLevelError,
-  latestItemFailureError,
-  hasErrorRetryElapsed,
+  latestItemError,
   parseMetaTimestamp,
 } from "./ref-helpers.js";
 
@@ -34,6 +32,7 @@ export {
 
 export {
   paramsKey,
+  normalizeCollectionOptions,
   ensureCollectionRefEntry,
   itemKey,
 } from "./params.js";

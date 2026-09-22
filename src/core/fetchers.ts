@@ -10,7 +10,6 @@ import {
   PARAM_DEFAULT_KEY,
 } from "./constants.js";
 import { emitLifecycle } from "./lifecycle.js";
-import { scheduleMemorySweep } from "./memory.js";
 import {
   assignRef,
   isStale,
@@ -20,19 +19,12 @@ import {
   cloneParams,
   paramsKey,
   setActiveLevelQueryId,
-  isLevelActive,
-  finalizeItemFailureMeta,
-  clearItemLevelError,
-  hasErrorRetryElapsed,
-  applyFetchedLevel,
+  latestItemError,
 } from "./helpers.js";
 import { queueBulkItemFetch } from "./bulk-fetch.js";
+import { runDirectItemFetch } from "./direct-item-fetch.js";
 import type {
   TypeEntry,
-  ItemRef,
-  CollectionRef,
-  FetchCollectionOptions,
-  FetchItemOptions,
 } from "./types.js";
 
 // ---- Level conversion planning --------------------------------------------
@@ -110,7 +102,7 @@ export async function _startCollectionFetch(
 ): Promise<void> {
   const C = G.collections.get(name);
   if (!C) throw new Error(`Unknown collection '${name}'`);
-  const { fetch, stalenessMs, errorRetryMs } = C;
+  const { fetch, stalenessMs } = C;
 
   // Compute the params key directly to ensure correct in-flight tracking
   // for parameterized collections. This ensures parameterized collections
@@ -122,7 +114,8 @@ export async function _startCollectionFetch(
     params ?? (ref.meta as { paramsSnapshot?: unknown }).paramsSnapshot ?? {},
   );
 
-  if (G.inFlightCol.has(inFlightKey)) {
+  const currentCollectionFetch = G.inFlightCol.get(inFlightKey);
+  if (currentCollectionFetch) {
     // Don't update isLoading here - it will be synced with in-flight state
     // Setting isLoading=true without activeQueryId breaks the invariant
     emitLifecycle("collection:fetch:coalesced", {
@@ -130,7 +123,17 @@ export async function _startCollectionFetch(
       params: snapshot,
       key: inFlightKey,
     });
-    return G.inFlightCol.get(inFlightKey)!.promise;
+    if (force) {
+      if (!currentCollectionFetch.pendingForce) {
+        let resolve = (): void => {};
+        const promise = new Promise<void>((done) => {
+          resolve = done;
+        });
+        currentCollectionFetch.pendingForce = { promise, resolve };
+      }
+      return currentCollectionFetch.pendingForce.promise;
+    }
+    return currentCollectionFetch.promise;
   }
 
   // Verify that the ref's paramsKey matches the expected key.
@@ -140,18 +143,11 @@ export async function _startCollectionFetch(
     ref.meta && ref.meta.paramsKey ? ref.meta.paramsKey : PARAM_DEFAULT_KEY;
   const paramsKeyMismatch = refParamsKey !== effectiveParamsKey;
   const neverFetchedForParams = !ref.meta.lastFetched;
-  const failedAt = ref.meta.lastFailedAt;
-
-  if (
-    !force &&
-    !paramsKeyMismatch &&
-    failedAt &&
-    !hasErrorRetryElapsed(failedAt, errorRetryMs)
-  ) {
+  if (!force && !paramsKeyMismatch && ref.meta.error !== null) {
     emitLifecycle("collection:fetch:skip", {
       name,
       params: snapshot,
-      reason: "failed",
+      reason: "previous-error",
     });
     return;
   }
@@ -160,7 +156,6 @@ export async function _startCollectionFetch(
     force ||
     paramsKeyMismatch ||
     neverFetchedForParams ||
-    !!failedAt ||
     isStale(ref.meta.lastFetched, stalenessMs);
 
   if (!shouldFetch) {
@@ -176,17 +171,12 @@ export async function _startCollectionFetch(
   }
 
   const qid = genQid();
-  assignRef(ref, {
-    meta: { ...ref.meta, isLoading: true, error: null, activeQueryId: qid },
+  let start = (): void => {};
+  const startGate = new Promise<void>((resolve) => {
+    start = resolve;
   });
-  emitLifecycle("collection:fetch:intent", {
-    name,
-    params: snapshot,
-    qid,
-    force: !!force,
-  });
-
   const promise = (async (): Promise<void> => {
+    await startGate;
     try {
       const result = await fetch(snapshot || {});
       if (ref.meta.activeQueryId !== qid) {
@@ -218,7 +208,6 @@ export async function _startCollectionFetch(
           ...ref.meta,
           isLoading: false,
           lastFetched: nowISO(),
-          lastFailedAt: null,
           error: null,
           activeQueryId: null,
         },
@@ -243,7 +232,6 @@ export async function _startCollectionFetch(
           ...ref.meta,
           isLoading: false,
           error: String(e),
-          lastFailedAt: nowISO(),
           activeQueryId: null,
         },
       });
@@ -253,17 +241,40 @@ export async function _startCollectionFetch(
         qid,
         error: String(e),
       });
-    } finally {
-      G.inFlightCol.delete(inFlightKey);
-      emitLifecycle("collection:fetch:complete", {
-        name,
-        params: snapshot,
-        qid,
-      });
     }
   })();
 
   G.inFlightCol.set(inFlightKey, { promise });
+  promise.finally(() => {
+    const bucket = G.inFlightCol.get(inFlightKey);
+    const pendingForce = bucket?.promise === promise
+      ? bucket.pendingForce
+      : undefined;
+    if (bucket?.promise === promise) G.inFlightCol.delete(inFlightKey);
+    emitLifecycle("collection:fetch:complete", {
+      name,
+      params: snapshot,
+      qid,
+    });
+    if (pendingForce) {
+      queueMicrotask(() => {
+        _startCollectionFetch(name, { force: true, params }).then(
+          pendingForce.resolve,
+          pendingForce.resolve,
+        );
+      });
+    }
+  });
+  assignRef(ref, {
+    meta: { ...ref.meta, isLoading: true, error: null, activeQueryId: qid },
+  });
+  emitLifecycle("collection:fetch:intent", {
+    name,
+    params: snapshot,
+    qid,
+    force: !!force,
+  });
+  start();
   return promise;
 }
 
@@ -283,7 +294,8 @@ export async function _startItemFetch(
   const levelLabel = levelName == null ? null : levelName;
   const eventBase = { typeName, id, level: levelLabel, canonicalLevel };
 
-  if (G.inFlightItm.has(key)) {
+  const currentItemFetch = G.inFlightItm.get(key);
+  if (currentItemFetch) {
     // Don't update isLoading here - setting isLoading=true without
     // activeQueryId breaks the invariant (isLoading=true + activeQueryId=null)
     emitLifecycle("item:fetch:coalesced", {
@@ -291,22 +303,33 @@ export async function _startItemFetch(
       loud: !!loud,
       key,
     });
-    return G.inFlightItm.get(key)!.promise;
+    if (force) {
+      if (!currentItemFetch.pendingForce) {
+        let resolve = (): void => {};
+        const promise = new Promise<void>((done) => {
+          resolve = done;
+        });
+        currentItemFetch.pendingForce = { promise, resolve, loud };
+      } else if (loud) {
+        currentItemFetch.pendingForce.loud = true;
+      }
+      return currentItemFetch.pendingForce.promise;
+    }
+    return currentItemFetch.promise;
   }
 
-  const isDefault = !levelName;
-  const levelCfg = levelName ? T.levels[levelName] : undefined;
-  const errorRetryMs = levelCfg ? levelCfg.errorRetryMs : T.errorRetryMs;
-  const failedAt = ref.meta.levelFailureStamps?.[canonicalLevel];
-  if (!force && failedAt && !hasErrorRetryElapsed(failedAt, errorRetryMs)) {
+  if (!force && ref.meta.failedLevels?.[canonicalLevel]) {
     emitLifecycle("item:fetch:skip", {
       ...eventBase,
       loud: !!loud,
       force: false,
-      reason: "failed",
+      reason: "previous-error",
     });
     return;
   }
+
+  const isDefault = !levelName;
+  const levelCfg = levelName ? T.levels[levelName] : undefined;
   const hasEnough = isDefault
     ? !!ref.data
     : !!(levelCfg && levelCfg.check(ref.data));
@@ -316,7 +339,7 @@ export async function _startItemFetch(
   const stalenessMs = levelCfg ? levelCfg.stalenessMs : T.stalenessMs;
   const stale = isStale(staleClock, stalenessMs);
 
-  const needs = force || !!failedAt || !hasEnough || stale;
+  const needs = force || !hasEnough || stale;
   if (!needs) {
     if (loud && ref.meta.isLoading) {
       assignRef(ref, { meta: { ...ref.meta, isLoading: false } });
@@ -336,29 +359,11 @@ export async function _startItemFetch(
     canonicalLevel,
     qid,
   );
-
-  // Always set activeQueryId for query matching, but only set isLoading if loud
-  if (loud) {
-    assignRef(ref, {
-      meta: {
-        ...ref.meta,
-        isLoading: true,
-        ...clearItemLevelError(ref.meta, canonicalLevel),
-        activeQueryId: qid,
-        activeLevelQueryIds: nextActiveLevels,
-      },
-    });
-  } else {
-    assignRef(ref, {
-      meta: {
-        ...ref.meta,
-        ...clearItemLevelError(ref.meta, canonicalLevel),
-        activeQueryId: qid,
-        activeLevelQueryIds: nextActiveLevels,
-      },
-    });
-  }
-
+  const nextFailedLevels = { ...(ref.meta.failedLevels || {}) };
+  delete nextFailedLevels[canonicalLevel];
+  const nextLevelErrors = { ...(ref.meta.levelErrors || {}) };
+  delete nextLevelErrors[canonicalLevel];
+  const remainingError = latestItemError(nextLevelErrors);
   const fallbackFetcher = levelCfg ? levelCfg.fetch : T.fetch;
   const bulkFetcher =
     levelCfg && typeof levelCfg.bulkFetch === "function"
@@ -367,6 +372,90 @@ export async function _startItemFetch(
         ? T.bulkFetch
         : null;
   const levelArg = levelName != null ? levelName : "default";
+  let start = (): void => {};
+  const startGate = new Promise<void>((resolve) => {
+    start = resolve;
+  });
+  const promise = (async (): Promise<void> => {
+    await startGate;
+    if (typeof bulkFetcher === "function") {
+      const queued = queueBulkItemFetch({
+        typeName,
+        id,
+        canonicalLevel,
+        levelArg,
+        ref,
+        qid,
+        bulkFetcher,
+        fallbackFetcher,
+      });
+      emitLifecycle("item:fetch:queued", {
+        ...eventBase,
+        qid,
+        strategy: "bulk",
+      });
+      await queued;
+      return;
+    }
+
+    await runDirectItemFetch({
+      type: T,
+      typeName,
+      id,
+      levelArg,
+      canonicalLevel,
+      eventBase,
+      ref,
+      qid,
+      fetcher: fallbackFetcher,
+    });
+  })();
+
+  G.inFlightItm.set(key, { promise, loud });
+  promise.finally(() => {
+    const bucket = G.inFlightItm.get(key);
+    const pendingForce = bucket?.promise === promise
+      ? bucket.pendingForce
+      : undefined;
+    if (bucket && bucket.promise === promise) {
+      G.inFlightItm.delete(key);
+    }
+    emitLifecycle("item:fetch:complete", { ...eventBase, qid });
+    if (pendingForce) {
+      queueMicrotask(() => {
+        _startItemFetch(typeName, id, levelName, {
+          force: true,
+          loud: pendingForce.loud,
+        }).then(pendingForce.resolve, pendingForce.resolve);
+      });
+    }
+  });
+
+  // Always set activeQueryId for query matching, but only set isLoading if loud
+  if (loud) {
+    assignRef(ref, {
+      meta: {
+        ...ref.meta,
+        isLoading: true,
+        error: remainingError,
+        activeQueryId: qid,
+        activeLevelQueryIds: nextActiveLevels,
+        failedLevels: nextFailedLevels,
+        levelErrors: nextLevelErrors,
+      },
+    });
+  } else {
+    assignRef(ref, {
+      meta: {
+        ...ref.meta,
+        error: remainingError,
+        activeQueryId: qid,
+        activeLevelQueryIds: nextActiveLevels,
+        failedLevels: nextFailedLevels,
+        levelErrors: nextLevelErrors,
+      },
+    });
+  }
   emitLifecycle("item:fetch:intent", {
     ...eventBase,
     qid,
@@ -374,127 +463,6 @@ export async function _startItemFetch(
     force: !!force,
     strategy: bulkFetcher ? "bulk" : "direct",
   });
-
-  let promise: Promise<void>;
-  if (typeof bulkFetcher === "function") {
-    promise = queueBulkItemFetch({
-      typeName,
-      id,
-      canonicalLevel,
-      levelArg,
-      ref,
-      qid,
-      bulkFetcher,
-      fallbackFetcher,
-    });
-    emitLifecycle("item:fetch:queued", {
-      ...eventBase,
-      qid,
-      strategy: "bulk",
-    });
-  } else {
-    promise = (async (): Promise<void> => {
-      try {
-        const data = await fallbackFetcher(id, levelArg);
-        if (!isLevelActive(ref.meta, canonicalLevel, qid)) {
-          emitLifecycle("item:fetch:aborted", {
-            ...eventBase,
-            qid,
-            reason: "superseded",
-          });
-          return;
-        }
-        const now = nowISO();
-        applyFetchedLevel(T, typeName, id, ref, canonicalLevel, data, now, qid);
-        emitLifecycle("item:fetch:success", {
-          ...eventBase,
-          qid,
-          strategy: "direct",
-        });
-      } catch (e) {
-        if (!isLevelActive(ref.meta, canonicalLevel, qid)) {
-          emitLifecycle("item:fetch:aborted", {
-            ...eventBase,
-            qid,
-            reason: "superseded",
-          });
-          return;
-        }
-        const nextMeta = finalizeItemFailureMeta(ref, canonicalLevel, qid, e);
-        assignRef(ref, { meta: nextMeta });
-        emitLifecycle("item:fetch:error", {
-          ...eventBase,
-          qid,
-          error: String(e),
-          strategy: "direct",
-        });
-      }
-    })();
-  }
-
-  G.inFlightItm.set(key, { promise, loud });
-  promise.finally(() => {
-    const bucket = G.inFlightItm.get(key);
-    if (bucket && bucket.promise === promise) {
-      G.inFlightItm.delete(key);
-    }
-    emitLifecycle("item:fetch:complete", { ...eventBase, qid });
-  });
+  start();
   return promise;
-}
-
-// ---- Public fetch API -----------------------------------------------------
-
-export function fetchCollection(
-  name: string,
-  opts: FetchCollectionOptions = {},
-): CollectionRef {
-  const C = G.collections.get(name);
-  if (!C) throw new Error(`Unknown collection '${name}'`);
-
-  // Support both { params: {...} } and direct params format.
-  // If opts.params is explicitly provided, use it.
-  // Otherwise, if opts has keys other than 'force' and 'params',
-  // treat opts as params directly.
-  let effectiveParams = opts.params;
-  let effectiveForce = opts.force;
-
-  if (effectiveParams === undefined) {
-    const optsKeys = Object.keys(opts);
-    const hasNonMetaKeys = optsKeys.some(
-      (k) => k !== "force" && k !== "params",
-    );
-    if (hasNonMetaKeys) {
-      const { force, params: _p, ...rest } = opts as Record<string, unknown>;
-      effectiveParams = rest;
-      effectiveForce = force as boolean | undefined;
-    }
-  }
-
-  const normalizedOpts = { params: effectiveParams, force: effectiveForce };
-
-  const { ref } = ensureCollectionRefEntry(name, effectiveParams);
-  ref.meta.lastUsedAt = nowISO();
-  scheduleMemorySweep();
-  _startCollectionFetch(name, normalizedOpts);
-
-  return ref;
-}
-
-export function fetchItem(
-  typeName: string,
-  id: unknown,
-  levelName: string | null = null,
-  opts: FetchItemOptions = {},
-): ItemRef {
-  const ref = ensureItemRef(typeName, id);
-  ref.meta.lastUsedAt = nowISO();
-  scheduleMemorySweep();
-
-  _startItemFetch(typeName, id, levelName, {
-    loud: !opts.silent,
-    force: !!opts.force,
-  });
-
-  return ref;
 }
